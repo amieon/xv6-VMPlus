@@ -299,26 +299,41 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
-      continue;   // page table entry hasn't been allocated
+    pte = walk(old, i, 0);
+    if(pte == 0)
+      continue;                 // 页表项不存在就跳过
     if((*pte & PTE_V) == 0)
-      continue;   // physical page hasn't been allocated
+      continue;                 // 没有物理页就跳过
+
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    // 只对“原本可写的用户页做 COW
+    // 代码页/只读页保持原样
+    if(flags & PTE_W){
+      // 子进程和父进程映射要只读 + COW
+      flags = (flags & ~PTE_W) | PTE_COW;
+
+      // 父进程也要
+      *pte = PA2PTE(pa) | flags | PTE_V;
+    }
+
+    // 共享同一物理页：引用计数 +1
+    kref_inc((void*)pa);
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      // map 失败要回滚 refcnt
+      kref_dec((void*)pa);
       goto err;
     }
   }
   return 0;
 
- err:
+err:
+  // 回收子进程已经建立的映射：
+  // do_free=1 会对每个 pa 调 kfree()， kfree 再对 refcnt--。
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
