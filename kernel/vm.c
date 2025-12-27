@@ -337,6 +337,48 @@ err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
+int
+cowbreak(pagetable_t pagetable, uint64 va)
+{
+  va = PGROUNDDOWN(va);
+
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return -1;
+  if((*pte & PTE_V) == 0)
+    return -1;
+  if((*pte & PTE_U) == 0)
+    return -1;
+
+  // 必须是 COW 且当前不可写
+  if(((*pte & PTE_COW) == 0) || ((*pte & PTE_W) != 0))
+    return -1;
+
+  uint64 pa_old = PTE2PA(*pte);
+  uint flags = PTE_FLAGS(*pte);
+
+  // 如果只有一个引用，不用拷贝，直接恢复可写
+  if(kref_get((void*)pa_old) == 1){
+    *pte = PA2PTE(pa_old) | ((flags | PTE_W) & ~PTE_COW) | PTE_V;
+    sfence_vma();
+    return 0;
+  }
+
+  char *mem = kalloc();
+  if(mem == 0)
+    return -1;
+
+  memmove(mem, (void*)pa_old, PGSIZE);
+
+  // 旧页引用计数 -1
+  kref_dec((void*)pa_old);
+
+  // 更新 PTE：指向新页，变可写，清掉 COW
+  *pte = PA2PTE((uint64)mem) | ((flags | PTE_W) & ~PTE_COW) | PTE_V;
+
+  sfence_vma();
+  return 0;
+}
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
