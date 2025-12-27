@@ -5870,29 +5870,29 @@ devintr()
     800026fa:	f4bff0ef          	jal	ra,80002644 <devintr>
     800026fe:	892a                	mv	s2,a0
     80002700:	ed5d                	bnez	a0,800027be <usertrap+0x10a>
-} else if(sc == 13 || sc == 15) {
+  } else if(sc == 13 || sc == 15) {
     80002702:	47b5                	li	a5,13
     80002704:	0cf98c63          	beq	s3,a5,800027dc <usertrap+0x128>
     80002708:	47bd                	li	a5,15
     8000270a:	08f99563          	bne	s3,a5,80002794 <usertrap+0xe0>
-  if(vmfault(p->pagetable, va, sc == 13) != 0){
+    if(vmfault(p->pagetable, va, sc == 13) != 0){
     8000270e:	4601                	li	a2,0
     80002710:	85d2                	mv	a1,s4
     80002712:	68a8                	ld	a0,80(s1)
     80002714:	fd9fe0ef          	jal	ra,800016ec <vmfault>
     80002718:	e539                	bnez	a0,80002766 <usertrap+0xb2>
-    if(cowbreak(p->pagetable, va) == 0){
+      if(cowbreak(p->pagetable, va) == 0){
     8000271a:	85d2                	mv	a1,s4
     8000271c:	68a8                	ld	a0,80(s1)
     8000271e:	e17fe0ef          	jal	ra,80001534 <cowbreak>
     80002722:	c131                	beqz	a0,80002766 <usertrap+0xb2>
-      printf("COW fail: pid=%d va=0x%lx pte?\n", p->pid, va);
+        printf("COW fail: pid=%d va=0x%lx pte?\n", p->pid, va);
     80002724:	8652                	mv	a2,s4
     80002726:	588c                	lw	a1,48(s1)
     80002728:	00005517          	auipc	a0,0x5
     8000272c:	bb850513          	addi	a0,a0,-1096 # 800072e0 <states.0+0x78>
     80002730:	d93fd0ef          	jal	ra,800004c2 <printf>
-      setkilled(p);
+        setkilled(p);
     80002734:	8526                	mv	a0,s1
     80002736:	b1bff0ef          	jal	ra,80002250 <setkilled>
     8000273a:	a035                	j	80002766 <usertrap+0xb2>
@@ -5941,7 +5941,7 @@ devintr()
     8000278c:	557d                	li	a0,-1
     8000278e:	9bbff0ef          	jal	ra,80002148 <kexit>
     80002792:	bf75                	j	8000274e <usertrap+0x9a>
-  printf("usertrap(): unexpected scause 0x%lx pid=%d\n", sc, p->pid);
+    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", sc, p->pid);
     80002794:	5890                	lw	a2,48(s1)
     80002796:	85ce                	mv	a1,s3
     80002798:	00005517          	auipc	a0,0x5
@@ -5949,12 +5949,12 @@ devintr()
     800027a0:	d23fd0ef          	jal	ra,800004c2 <printf>
   asm volatile("csrr %0, sepc" : "=r" (x) );
     800027a4:	141025f3          	csrr	a1,sepc
-  printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
+    printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
     800027a8:	8652                	mv	a2,s4
     800027aa:	00005517          	auipc	a0,0x5
     800027ae:	b8650513          	addi	a0,a0,-1146 # 80007330 <states.0+0xc8>
     800027b2:	d11fd0ef          	jal	ra,800004c2 <printf>
-  setkilled(p);
+    setkilled(p);
     800027b6:	8526                	mv	a0,s1
     800027b8:	a99ff0ef          	jal	ra,80002250 <setkilled>
     800027bc:	b76d                	j	80002766 <usertrap+0xb2>
@@ -5973,13 +5973,13 @@ devintr()
     yield();
     800027d6:	83bff0ef          	jal	ra,80002010 <yield>
     800027da:	bf51                	j	8000276e <usertrap+0xba>
-  if(vmfault(p->pagetable, va, sc == 13) != 0){
+    if(vmfault(p->pagetable, va, sc == 13) != 0){
     800027dc:	4605                	li	a2,1
     800027de:	85d2                	mv	a1,s4
     800027e0:	68a8                	ld	a0,80(s1)
     800027e2:	f0bfe0ef          	jal	ra,800016ec <vmfault>
     800027e6:	f141                	bnez	a0,80002766 <usertrap+0xb2>
-    setkilled(p);
+      setkilled(p);
     800027e8:	8526                	mv	a0,s1
     800027ea:	a67ff0ef          	jal	ra,80002250 <setkilled>
     800027ee:	bfa5                	j	80002766 <usertrap+0xb2>

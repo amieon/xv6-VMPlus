@@ -145,6 +145,14 @@ UPROGS=\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
+	$U/_cowtest\
+	$U/_cow_basic\
+	$U/_cow_bidir\
+	$U/_cow_heap\
+	$U/_cow_pagewalk\
+	$U/_cow_multipage\
+	$U/_cow_forkstorm\
+
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
