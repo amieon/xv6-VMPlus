@@ -71,6 +71,18 @@ usertrap(void)
   } else if((r_scause() == 15 || r_scause() == 13) &&
             vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
     // page fault on lazily-allocated page
+
+    if(r_scause() == 15){
+      // 尝试COW拆页
+      if(cowbreak(p->pagetable,r_stval()) == 0){
+        //成功了就不管了，直接继续执行
+      }
+      else{
+        //失败了就kill掉
+        p->killed = 1;
+      }
+    }
+
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
