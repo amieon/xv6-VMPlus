@@ -415,6 +415,15 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     }
 
     pte = walk(pagetable, va0, 0);
+
+    //如果pte是COW的，这里又要求复制，所以我们只好把COW页拆开了
+    if(pte && (*pte & PTE_COW)){
+      if(cowbreak(pagetable, va0) < 0)
+        return -1;
+      // cowbreak 后 PTE 已可写，重新 walk 一次拿到新 pte
+      pte = walk(pagetable, va0, 0);
+    }
+
     // forbid copyout over read-only user text pages.
     if((*pte & PTE_W) == 0)
       return -1;
