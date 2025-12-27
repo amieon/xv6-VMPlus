@@ -38,6 +38,8 @@ uint64
 usertrap(void)
 {
   int which_dev = 0;
+  uint64 sc = r_scause();
+  uint64 va = r_stval();
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -68,26 +70,32 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else if((r_scause() == 15 || r_scause() == 13) &&
-            vmfault(p->pagetable, r_stval(), (r_scause() == 13)? 1 : 0) != 0) {
-    // page fault on lazily-allocated page
+} else if(sc == 13 || sc == 15) {
 
-    if(r_scause() == 15){
-      // 尝试COW拆页
-      if(cowbreak(p->pagetable,r_stval()) == 0){
-        //成功了就不管了，直接继续执行
-      }
-      else{
-        //失败了就kill掉
-        p->killed = 1;
-      }
+  // 1) 先处理 lazy allocation：只处理“没映射但合法”的情况
+  if(vmfault(p->pagetable, va, sc == 13) != 0){
+    // handled
+  }
+  // 2) 再处理 COW：只有 store fault 才可能
+  else if(sc == 15){
+    if(cowbreak(p->pagetable, va) == 0){
+      // handled
+    } else {
+      printf("COW fail: pid=%d va=0x%lx pte?\n", p->pid, va);
+      setkilled(p);
     }
-
-  } else {
-    printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+  } 
+  // 3) load fault 但 vmfault 也处理不了：非法
+  else {
     setkilled(p);
   }
+
+} else {
+  printf("usertrap(): unexpected scause 0x%lx pid=%d\n", sc, p->pid);
+  printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), va);
+  setkilled(p);
+}
+
 
   if(killed(p))
     kexit(-1);
