@@ -109,35 +109,46 @@ sys_uptime(void)
 }
 
 
-#define MMAPBASE  (0x40000000L)  // 可以选别的，只要在用户区且不撞 heap/stack
+#define MMAPBASE  (0x40000000L)           // 1GB处，远离0起步的heap
+#define MMAPTOP   (TRAPFRAME - 10*PGSIZE) // 离 trapframe 留点余量
 
-static int
-vma_overlaps(struct proc *p, uint64 start, uint64 end)
+
+static uint64
+vma_next_conflict_end(struct proc *p, uint64 start, uint64 end)
 {
-  for(int i = 0; i < NVMA; i++){
+  uint64 best = 0;
+  for(int i=0;i<NVMA;i++){
     if(!p->vmas[i].used) continue;
     uint64 s = p->vmas[i].start;
     uint64 e = p->vmas[i].end;
-    if(!(end <= s || start >= e))
-      return 1;
+    if(!(end <= s || start >= e)){
+      // overlap，候选跳到这个vma的结尾
+      if(best == 0 || e < best) best = e;
+    }
   }
-  return 0;
+  return best; // 0表示无冲突
 }
 
 static uint64
 vma_find_space(struct proc *p, uint64 len)
 {
-  uint64 va = MMAPBASE;
-  for(int tries = 0; tries < 4096; tries++){
+  len = PGROUNDUP(len);
+
+  for(uint64 va = MMAPBASE; va + len < MMAPTOP; ){
     uint64 start = va;
-    uint64 end   = va + len;
-    if(end >= MAXVA) return 0;
-    if(!vma_overlaps(p, start, end))
-      return start;
-    va += len; //按 len 跳（不做精细 first-fit）,后面再改
+    uint64 end = va + len;
+
+    uint64 jump = vma_next_conflict_end(p, start, end);
+    if(jump == 0){
+      return start; // 找到空洞
+    }
+
+    // 跳到冲突区域末尾，再页对齐
+    va = PGROUNDUP(jump);
   }
   return 0;
 }
+
 
 static struct vma*
 vma_alloc_slot(struct proc *p)
@@ -171,25 +182,31 @@ sys_mmap(void)
   argint(2, &prot);
   argint(3, &flags);
 
-  if(addr != 0) return (uint64)-1;
-  if(len <= 0) return (uint64)-1;
-  if((flags & MAP_ANON) == 0) return (uint64)-1;
-  if((prot & PROT_READ) == 0) return (uint64)-1; // 最小版：至少可读
+
+  if(len <= 0) return -1;
+  uint64 plen = PGROUNDUP((uint64)len);
+  if(plen == 0) return -1;                
+  if(plen > (MMAPTOP - MMAPBASE)) return -1;
+
+  if((prot & ~(PROT_READ|PROT_WRITE)) != 0) return -1;  
+  if((flags & MAP_ANON) == 0) return -1;
+  if(addr != 0) return -1;            
 
   struct proc *p = myproc();
-  uint64 plen = PGROUNDUP((uint64)len);
 
   struct vma *v = vma_alloc_slot(p);
   if(v == 0) return (uint64)-1;
 
   uint64 va = vma_find_space(p, plen);
   if(va == 0) return (uint64)-1;
-
+  
   v->used = 1;
   v->start = va;
   v->end = va + plen;
   v->prot = prot;
   v->flags = flags;
+
+  if(va < MMAPBASE || va + plen > MMAPTOP) return -1;
 
   return va;
 }
@@ -219,9 +236,13 @@ sys_munmap(void)
   if(v == 0) return (uint64)-1;
   if(plen != (v->end - v->start)) return (uint64)-1;
 
+  // 不相信用户的len，用VMA自己的长度来unmap
+  uint64 l = v->end - v->start;
+  uvmunmap(p->pagetable, v->start, l/PGSIZE, 1);
+
   // 解除映射：已经分配的页会被 kfree/refcnt 回收，没分配的页 uvmunmap 会跳过
   
-  uvmunmap(p->pagetable, v->start, plen/PGSIZE, 1);
+  // uvmunmap(p->pagetable, v->start, plen/PGSIZE, 1);
 
   v->used = 0;
   v->start = v->end = 0;
