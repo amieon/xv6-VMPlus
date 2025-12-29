@@ -71,24 +71,37 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else if(sc == 13 || sc == 15) {
-
-    //先处理lazy allocation：只处理“没映射但合法”的情况
-    if(vmfault(p->pagetable, va, sc == 13) != 0){
-      // handled
-    }
-    //再处理COW：只有 store fault 才可能
-    else if(sc == 15){
-      if(cowbreak(p->pagetable, va) == 0){
-        // handled
+    if(sc == 15){
+      if(cowbreak(p->pagetable, va) == 0) {
+      } else if(vmafault(p, va, 1) != 0) {
+      } else if(vmfault(p->pagetable, va, 0) != 0) {
       } else {
-        printf("COW fail: pid=%d va=0x%lx pte?\n", p->pid, va);
         setkilled(p);
       }
-    } 
-    //load fault 但 vmfault 也处理不了,所以非法
-    else {
-      setkilled(p);
+    } else { 
+      if(vmafault(p, va, 0) != 0) {
+      } else if(vmfault(p->pagetable, va, 1) != 0) {
+      } else {
+        setkilled(p);
+      }
     }
+    // //先处理lazy allocation：只处理“没映射但合法”的情况
+    // if(vmfault(p->pagetable, va, sc == 13) != 0){
+    //   // handled
+    // }
+    // //再处理COW：只有 store fault 才可能
+    // else if(sc == 15){
+    //   if(cowbreak(p->pagetable, va) == 0){
+    //     // handled
+    //   } else {
+    //     printf("COW fail: pid=%d va=0x%lx pte?\n", p->pid, va);
+    //     setkilled(p);
+    //   }
+    // } 
+    // //load fault 但 vmfault 也处理不了,所以非法
+    // else {
+    //   setkilled(p);
+    // }
 
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", sc, p->pid);

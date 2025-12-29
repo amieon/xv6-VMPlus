@@ -173,7 +173,7 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             ismapped(pagetable_t, uint64);
 uint64          vmfault(pagetable_t, uint64, int);
 int             cowbreak(pagetable_t pagetable, uint64 va);
-
+uint64          vmafault(struct proc *, uint64, int);
 
 // plic.c
 void            plicinit(void);

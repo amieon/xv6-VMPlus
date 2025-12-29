@@ -1,4 +1,7 @@
 #define SBRK_ERROR ((char *)-1)
+#define PROT_READ  0x1
+#define PROT_WRITE 0x2
+#define MAP_ANON   0x1
 
 struct stat;
 
@@ -24,6 +27,11 @@ int getpid(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
+void* mmap(uint64 addr, int len, int prot, int flags);
+int munmap(void *addr, int len);
+
+
+
 
 // ulib.c
 int stat(const char*, struct stat*);

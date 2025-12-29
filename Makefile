@@ -152,7 +152,7 @@ UPROGS=\
 	$U/_cow_pagewalk\
 	$U/_cow_multipage\
 	$U/_cow_forkstorm\
-
+	$U/_mmap_basic_test\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

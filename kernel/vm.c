@@ -550,3 +550,33 @@ ismapped(pagetable_t pagetable, uint64 va)
   }
   return 0;
 }
+
+uint64
+vmafault(struct proc *p, uint64 va, int iswrite)
+{
+  va = PGROUNDDOWN(va);
+
+  struct vma *v = vma_find(p, va);
+  if(v == 0) return 0;
+
+  // 权限检查
+  if((v->prot & PROT_READ) == 0) return 0;
+  if(iswrite && ((v->prot & PROT_WRITE) == 0)) return 0;
+
+  if(ismapped(p->pagetable, va))
+    return 0;
+
+  int perm = PTE_U | PTE_R;
+  if(iswrite) perm |= PTE_W;
+
+  char *mem = kalloc();
+  if(mem == 0) return 0;
+  memset(mem, 0, PGSIZE);
+
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0){
+    kfree(mem);
+    return 0;
+  }
+
+  return (uint64)mem;
+}
