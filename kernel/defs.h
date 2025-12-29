@@ -139,6 +139,9 @@ int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
 
+//sysproc.c
+struct vma*     vma_find(struct proc *, uint64);
+
 // trap.c
 extern uint     ticks;
 void            trapinit(void);

@@ -149,7 +149,7 @@ vma_alloc_slot(struct proc *p)
   return 0;
 }
 
-static struct vma*
+struct vma*
 vma_find(struct proc *p, uint64 va)
 {
   for(int i = 0; i < NVMA; i++){
@@ -203,12 +203,11 @@ sys_munmap(void)
   argaddr(0, &addr);
   argint(1, &len);
 
-  if(addr != 0) return (uint64)-1;
+  if(addr % PGSIZE != 0) return (uint64)-1;   // 要求页对齐
   if(len <= 0) return (uint64)-1;
 
   struct proc *p = myproc();
   uint64 plen = PGROUNDUP((uint64)len);
-
   // 找到起点匹配的 vma
   struct vma *v = 0;
   for(int i = 0; i < NVMA; i++){
@@ -221,6 +220,7 @@ sys_munmap(void)
   if(plen != (v->end - v->start)) return (uint64)-1;
 
   // 解除映射：已经分配的页会被 kfree/refcnt 回收，没分配的页 uvmunmap 会跳过
+  
   uvmunmap(p->pagetable, v->start, plen/PGSIZE, 1);
 
   v->used = 0;

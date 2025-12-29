@@ -8,6 +8,7 @@
 #include "proc.h"
 #include "fs.h"
 
+
 /*
  * the kernel's page table.
  */
@@ -192,6 +193,7 @@ uvmcreate()
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
+  
   uint64 a;
   pte_t *pte;
 
@@ -550,6 +552,7 @@ ismapped(pagetable_t pagetable, uint64 va)
   }
   return 0;
 }
+
 
 uint64
 vmafault(struct proc *p, uint64 va, int iswrite)

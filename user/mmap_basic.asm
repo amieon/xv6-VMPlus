@@ -1,12 +1,12 @@
 
-user/_cow_bidir：     文件格式 elf64-littleriscv
+user/_mmap_basic：     文件格式 elf64-littleriscv
 
 
 Disassembly of section .text:
 
 0000000000000000 <main>:
-
-int x = 100;
+#include "../kernel/stat.h"
+#include "user.h"
 
 int
 main(void)
@@ -15,63 +15,67 @@ main(void)
    2:	ec06                	sd	ra,24(sp)
    4:	e822                	sd	s0,16(sp)
    6:	e426                	sd	s1,8(sp)
-   8:	e04a                	sd	s2,0(sp)
-   a:	1000                	addi	s0,sp,32
-  int pid = fork();
-   c:	308000ef          	jal	ra,314 <fork>
-  if(pid < 0) exit(1);
-  10:	02054463          	bltz	a0,38 <main+0x38>
+   8:	1000                	addi	s0,sp,32
+  int len = 8192;
+  char *p = mmap(0, len, PROT_READ|PROT_WRITE, MAP_ANON);
+   a:	4685                	li	a3,1
+   c:	460d                	li	a2,3
+   e:	6589                	lui	a1,0x2
+  10:	4501                	li	a0,0
+  12:	3aa000ef          	jal	ra,3bc <mmap>
+  if(p == (char*)-1){
+  16:	57fd                	li	a5,-1
+  18:	04f50663          	beq	a0,a5,64 <main+0x64>
+  1c:	84aa                	mv	s1,a0
+    printf("mmap failed\n");
+    exit(1);
+  }
 
-    if(pid == 0){
-  14:	e50d                	bnez	a0,3e <main+0x3e>
-    // child
-    x = 200;
-  16:	0c800793          	li	a5,200
-  1a:	00001717          	auipc	a4,0x1
-  1e:	fef72323          	sw	a5,-26(a4) # 1000 <x>
-    printf("child: x=%d\n", x);
-  22:	0c800593          	li	a1,200
-  26:	00001517          	auipc	a0,0x1
-  2a:	8ba50513          	addi	a0,a0,-1862 # 8e0 <malloc+0xe4>
-  2e:	71a000ef          	jal	ra,748 <printf>
-    exit(0);
-  32:	4501                	li	a0,0
-  34:	2e8000ef          	jal	ra,31c <exit>
-  if(pid < 0) exit(1);
-  38:	4505                	li	a0,1
-  3a:	2e2000ef          	jal	ra,31c <exit>
-    }
+  p[0] = 'A';
+  1e:	04100793          	li	a5,65
+  22:	00f50023          	sb	a5,0(a0)
+  p[4096] = 'B';
+  26:	6785                	lui	a5,0x1
+  28:	97aa                	add	a5,a5,a0
+  2a:	04200713          	li	a4,66
+  2e:	00e78023          	sb	a4,0(a5) # 1000 <freep>
+  printf("p[0]=%c p[4096]=%c\n", p[0], p[4096]);
+  32:	04200613          	li	a2,66
+  36:	04100593          	li	a1,65
+  3a:	00001517          	auipc	a0,0x1
+  3e:	8b650513          	addi	a0,a0,-1866 # 8f0 <malloc+0xf4>
+  42:	706000ef          	jal	ra,748 <printf>
 
+  if(munmap(p, len) < 0){
+  46:	6589                	lui	a1,0x2
+  48:	8526                	mv	a0,s1
+  4a:	37a000ef          	jal	ra,3c4 <munmap>
+  4e:	02054463          	bltz	a0,76 <main+0x76>
+    printf("munmap failed\n");
+    exit(1);
+  }
 
-  // parent writes
-  x = 300;
-  3e:	00001497          	auipc	s1,0x1
-  42:	fc248493          	addi	s1,s1,-62 # 1000 <x>
-  46:	12c00913          	li	s2,300
-  4a:	0124a023          	sw	s2,0(s1)
-  wait(0);
-  4e:	4501                	li	a0,0
-  50:	2d4000ef          	jal	ra,324 <wait>
-  printf("parent: x=%d (expect 300)\n", x);
-  54:	408c                	lw	a1,0(s1)
-  56:	00001517          	auipc	a0,0x1
-  5a:	89a50513          	addi	a0,a0,-1894 # 8f0 <malloc+0xf4>
-  5e:	6ea000ef          	jal	ra,748 <printf>
-  if(x != 300) printf("FAIL parent\n");
-  62:	409c                	lw	a5,0(s1)
-  64:	01279b63          	bne	a5,s2,7a <main+0x7a>
   printf("PASS\n");
-  68:	00001517          	auipc	a0,0x1
-  6c:	8b850513          	addi	a0,a0,-1864 # 920 <malloc+0x124>
-  70:	6d8000ef          	jal	ra,748 <printf>
+  52:	00001517          	auipc	a0,0x1
+  56:	8c650513          	addi	a0,a0,-1850 # 918 <malloc+0x11c>
+  5a:	6ee000ef          	jal	ra,748 <printf>
   exit(0);
-  74:	4501                	li	a0,0
-  76:	2a6000ef          	jal	ra,31c <exit>
-  if(x != 300) printf("FAIL parent\n");
-  7a:	00001517          	auipc	a0,0x1
-  7e:	89650513          	addi	a0,a0,-1898 # 910 <malloc+0x114>
-  82:	6c6000ef          	jal	ra,748 <printf>
-  86:	b7cd                	j	68 <main+0x68>
+  5e:	4501                	li	a0,0
+  60:	2bc000ef          	jal	ra,31c <exit>
+    printf("mmap failed\n");
+  64:	00001517          	auipc	a0,0x1
+  68:	87c50513          	addi	a0,a0,-1924 # 8e0 <malloc+0xe4>
+  6c:	6dc000ef          	jal	ra,748 <printf>
+    exit(1);
+  70:	4505                	li	a0,1
+  72:	2aa000ef          	jal	ra,31c <exit>
+    printf("munmap failed\n");
+  76:	00001517          	auipc	a0,0x1
+  7a:	89250513          	addi	a0,a0,-1902 # 908 <malloc+0x10c>
+  7e:	6ca000ef          	jal	ra,748 <printf>
+    exit(1);
+  82:	4505                	li	a0,1
+  84:	298000ef          	jal	ra,31c <exit>
 
 0000000000000088 <start>:
 //
@@ -105,7 +109,7 @@ strcpy(char *s, const char *t)
   os = s;
   while((*s++ = *t++) != 0)
   9e:	87aa                	mv	a5,a0
-  a0:	0585                	addi	a1,a1,1
+  a0:	0585                	addi	a1,a1,1 # 2001 <base+0xff1>
   a2:	0785                	addi	a5,a5,1
   a4:	fff5c703          	lbu	a4,-1(a1)
   a8:	fee78fa3          	sb	a4,-1(a5)
@@ -826,7 +830,7 @@ printint(int fd, long long xx, int base, int sgn)
   do{
     buf[i++] = digits[x % base];
  408:	00000517          	auipc	a0,0x0
- 40c:	52850513          	addi	a0,a0,1320 # 930 <digits>
+ 40c:	52050513          	addi	a0,a0,1312 # 928 <digits>
  410:	883e                	mv	a6,a5
  412:	2785                	addiw	a5,a5,1
  414:	02c5f733          	remu	a4,a1,a2
@@ -940,7 +944,7 @@ vprintf(int fd, const char *fmt, va_list ap)
  4c4:	07500d93          	li	s11,117
     putc(fd, digits[x >> (sizeof(uint64) * 8 - 4)]);
  4c8:	00000c97          	auipc	s9,0x0
- 4cc:	468c8c93          	addi	s9,s9,1128 # 930 <digits>
+ 4cc:	460c8c93          	addi	s9,s9,1120 # 928 <digits>
  4d0:	a005                	j	4f0 <vprintf+0x6a>
         putc(fd, c0);
  4d2:	85ca                	mv	a1,s2
@@ -1232,7 +1236,7 @@ vprintf(int fd, const char *fmt, va_list ap)
  6ea:	bbdd                	j	4e0 <vprintf+0x5a>
           s = "(null)";
  6ec:	00000917          	auipc	s2,0x0
- 6f0:	23c90913          	addi	s2,s2,572 # 928 <malloc+0x12c>
+ 6f0:	23490913          	addi	s2,s2,564 # 920 <malloc+0x124>
         for(; *s; s++)
  6f4:	02800593          	li	a1,40
  6f8:	b7c5                	j	6d8 <vprintf+0x252>
@@ -1335,7 +1339,7 @@ free(void *ap)
  780:	ff050693          	addi	a3,a0,-16
   for(p = freep; !(bp > p && bp < p->s.ptr); p = p->s.ptr)
  784:	00001797          	auipc	a5,0x1
- 788:	88c7b783          	ld	a5,-1908(a5) # 1010 <freep>
+ 788:	87c7b783          	ld	a5,-1924(a5) # 1000 <freep>
  78c:	a02d                	j	7b6 <free+0x3c>
     if(p >= p->s.ptr && (bp > p || bp < p->s.ptr))
       break;
@@ -1391,7 +1395,7 @@ free(void *ap)
     p->s.ptr = bp;
   freep = p;
  7ee:	00001717          	auipc	a4,0x1
- 7f2:	82f73123          	sd	a5,-2014(a4) # 1010 <freep>
+ 7f2:	80f73923          	sd	a5,-2030(a4) # 1000 <freep>
 }
  7f6:	6422                	ld	s0,8(sp)
  7f8:	0141                	addi	sp,sp,16
@@ -1426,7 +1430,7 @@ malloc(uint nbytes)
  81e:	0485                	addi	s1,s1,1
   if((prevp = freep) == 0){
  820:	00000517          	auipc	a0,0x0
- 824:	7f053503          	ld	a0,2032(a0) # 1010 <freep>
+ 824:	7e053503          	ld	a0,2016(a0) # 1000 <freep>
  828:	c515                	beqz	a0,854 <malloc+0x58>
     base.s.ptr = freep = prevp = &base;
     base.s.size = 0;
@@ -1451,15 +1455,15 @@ malloc(uint nbytes)
     }
     if(p == freep)
  848:	00000917          	auipc	s2,0x0
- 84c:	7c890913          	addi	s2,s2,1992 # 1010 <freep>
+ 84c:	7b890913          	addi	s2,s2,1976 # 1000 <freep>
   if(p == SBRK_ERROR)
  850:	5afd                	li	s5,-1
  852:	a885                	j	8c2 <malloc+0xc6>
     base.s.ptr = freep = prevp = &base;
  854:	00000797          	auipc	a5,0x0
- 858:	7cc78793          	addi	a5,a5,1996 # 1020 <base>
+ 858:	7bc78793          	addi	a5,a5,1980 # 1010 <base>
  85c:	00000717          	auipc	a4,0x0
- 860:	7af73a23          	sd	a5,1972(a4) # 1010 <freep>
+ 860:	7af73223          	sd	a5,1956(a4) # 1000 <freep>
  864:	e39c                	sd	a5,0(a5)
     base.s.size = 0;
  866:	0007a423          	sw	zero,8(a5)
@@ -1478,7 +1482,7 @@ malloc(uint nbytes)
  880:	0137a423          	sw	s3,8(a5)
       freep = prevp;
  884:	00000717          	auipc	a4,0x0
- 888:	78a73623          	sd	a0,1932(a4) # 1010 <freep>
+ 888:	76a73e23          	sd	a0,1916(a4) # 1000 <freep>
       return (void*)(p + 1);
  88c:	01078513          	addi	a0,a5,16
       if((p = morecore(nunits)) == 0)
