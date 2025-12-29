@@ -562,15 +562,28 @@ vmafault(struct proc *p, uint64 va, int iswrite)
   struct vma *v = vma_find(p, va);
   if(v == 0) return 0;
 
-  // 权限检查
-  if((v->prot & PROT_READ) == 0) return 0;
-  if(iswrite && ((v->prot & PROT_WRITE) == 0)) return 0;
-
-  if(ismapped(p->pagetable, va))
+  // 权限检查：VMA 不允许写但发生写 fault -> 不处理，让上层 kill
+  if(iswrite && (v->prot & PROT_WRITE) == 0)
+    return 0;
+  if((v->prot & PROT_READ) == 0)
     return 0;
 
-  int perm = PTE_U | PTE_R;
-  if(iswrite) perm |= PTE_W;
+  pte_t *pte = walk(p->pagetable, va, 0);
+  if(pte && (*pte & PTE_V)){
+    // 已经映射：如果 VMA 允许写，但 PTE 没写位，补上
+    if((v->prot & PROT_WRITE) && ((*pte & PTE_W) == 0)){
+      *pte |= PTE_W;
+      sfence_vma();     // 刷新 TLB（你有单参数版本也行）
+      return 1;
+    }
+    // 已映射且权限没问题：这次 fault 不该由我们处理
+    return 0;
+  }
+
+  // 未映射：按 VMA prot 建立映射
+  int perm = PTE_U;
+  if(v->prot & PROT_READ)  perm |= PTE_R;
+  if(v->prot & PROT_WRITE) perm |= PTE_W;
 
   char *mem = kalloc();
   if(mem == 0) return 0;
@@ -580,6 +593,6 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     kfree(mem);
     return 0;
   }
-
   return (uint64)mem;
 }
+

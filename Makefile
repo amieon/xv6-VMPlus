@@ -154,6 +154,8 @@ UPROGS=\
 	$U/_cow_forkstorm\
 	$U/_mmap_basic\
 	$U/_mmap_no_unmap\
+	$U/_mmap_rw_test\
+	$U/_mmap_ro_kill\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
