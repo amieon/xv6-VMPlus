@@ -128,18 +128,31 @@ kexec(char *path, char **argv)
   safestrcpy(p->name, last, sizeof(p->name));
     
   // Commit to the user image.
+  struct vma oldvmas[NVMA];
+  memmove(oldvmas, p->vmas, sizeof(oldvmas));
+
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
   p->sz = sz;
-  p->trapframe->epc = elf.entry;  // initial program counter = ulib.c:start()
-  p->trapframe->sp = sp; // initial stack pointer
+  p->trapframe->epc = elf.entry;
+  p->trapframe->sp = sp;
+
+  // exec 后丢弃旧 mmap 记录
+  memset(p->vmas, 0, sizeof(p->vmas));
+
+  // 先在旧页表上拆掉旧 VMA 映射，再释放旧页表
+  vma_unmap_pagetable(oldpagetable, oldvmas);
   proc_freepagetable(oldpagetable, oldsz);
+
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
-  if(pagetable)
-    proc_freepagetable(pagetable, sz);
+  if(pagetable){
+    vma_unmap_pagetable(p->pagetable, p->vmas);
+    memset(p->vmas, 0, sizeof(p->vmas));
+    proc_freepagetable(p->pagetable, p->sz);
+  }
   if(ip){
     iunlockput(ip);
     end_op();

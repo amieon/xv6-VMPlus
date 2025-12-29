@@ -158,8 +158,11 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->pagetable)
+  if(p->pagetable){
+    vma_unmap_pagetable(p->pagetable, p->vmas);
+    memset(p->vmas, 0, sizeof(p->vmas));
     proc_freepagetable(p->pagetable, p->sz);
+  }
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -205,10 +208,25 @@ proc_pagetable(struct proc *p)
   return pagetable;
 }
 
+void
+vma_unmap_pagetable(pagetable_t pagetable, struct vma *vmas)
+{
+  for(int i = 0; i < NVMA; i++){
+    if(vmas[i].used){
+      uint64 start = vmas[i].start;
+      uint64 len   = vmas[i].end - vmas[i].start;
+      if(len > 0)
+        uvmunmap(pagetable, start, len/PGSIZE, 1);
+    }
+  }
+}
+
+
+
 // Free a process's page table, and free the
 // physical memory it refers to.
 void
-proc_freepagetable(pagetable_t pagetable, uint64 sz)
+proc_freepagetable(pagetable_t pagetable,uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
