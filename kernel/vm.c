@@ -430,6 +430,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         return -1;
       // cowbreak 后 PTE 已可写，重新 walk 一次拿到新 pte
       pte = walk(pagetable, va0, 0);
+      pa0 = walkaddr(pagetable, va0);
     }
 
     // forbid copyout over read-only user text pages.
