@@ -309,9 +309,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       continue;                 // 没有物理页就跳过
 
+
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
+    if((flags & PTE_U) == 0)
+      continue;
+      
     // 只对“原本可写的用户页做 COW
     // 代码页/只读页保持原样
     if(flags & PTE_W){
@@ -330,6 +334,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       kref_dec((void*)pa);
       goto err;
     }
+    sfence_vma();
+
   }
   return 0;
 
@@ -573,26 +579,37 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     // 已经映射：如果 VMA 允许写，但 PTE 没写位，补上
     if((v->prot & PROT_WRITE) && ((*pte & PTE_W) == 0)){
       *pte |= PTE_W;
-      sfence_vma();     // 刷新 TLB（你有单参数版本也行）
+      sfence_vma();     // 刷新 TLB
       return 1;
     }
     // 已映射且权限没问题：这次 fault 不该由我们处理
     return 0;
   }
+  int idx = (va - v->start) / PGSIZE;
+  uint64 pa;
 
+  if(v->is_shm){
+    pa = shm_getpa(v->shm_key, idx);
+    if(pa == 0) return 0;
+    // 映射共享页时，记得增加页引用计数（如果你的 kfree 用 refcnt）
+    kref_inc((void*)pa);
+  } else {
+    char *mem = kalloc();
+    if(mem == 0) return 0;
+    memset(mem, 0, PGSIZE);
+    pa = (uint64)mem;
+  }
   // 未映射：按 VMA prot 建立映射
   int perm = PTE_U;
   if(v->prot & PROT_READ)  perm |= PTE_R;
   if(v->prot & PROT_WRITE) perm |= PTE_W;
 
-  char *mem = kalloc();
-  if(mem == 0) return 0;
-  memset(mem, 0, PGSIZE);
-
-  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0){
-    kfree(mem);
+  if(mappages(p->pagetable, va, PGSIZE, pa, perm) != 0){
+    // 回滚, 共享页要 dec，匿名页要 kfree
+    if(v->is_shm) kref_dec((void*)pa);
+    else kfree((void*)pa);
     return 0;
   }
-  return (uint64)mem;
+  return (uint64)pa;
 }
 

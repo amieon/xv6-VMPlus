@@ -6,7 +6,7 @@ int
 main(void)
 {
   int len = 8192;
-  char *p = mmap(0, len, PROT_READ|PROT_WRITE, MAP_ANON);
+  char *p = mmap(0, len, PROT_READ|PROT_WRITE, MAP_ANON, 1);
   if(p == (char*)-1){
     printf("mmap failed\n");
     exit(1);

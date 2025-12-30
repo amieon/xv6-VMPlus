@@ -9,6 +9,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 struct vma;
+struct shmobj;
 
 // bio.c
 void            binit(void);
@@ -179,6 +180,12 @@ int             ismapped(pagetable_t, uint64);
 uint64          vmfault(pagetable_t, uint64, int);
 int             cowbreak(pagetable_t pagetable, uint64 va);
 uint64          vmafault(struct proc *, uint64, int);
+
+//shm.c
+void            shm_init(void);
+int             shm_get(int key, int npages);
+void            shm_put(int key);
+uint64          shm_getpa(int key, int page_index);
 
 // plic.c
 void            plicinit(void);

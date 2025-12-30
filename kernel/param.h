@@ -18,4 +18,8 @@
 #define PROT_WRITE   0x2
 
 #define MAP_ANON     0x1
+#define MAP_SHARED   0x2
+
+
+
 

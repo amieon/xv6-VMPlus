@@ -2,6 +2,8 @@
 #define PROT_READ  0x1
 #define PROT_WRITE 0x2
 #define MAP_ANON   0x1
+#define MAP_SHARED   0x2
+
 
 struct stat;
 
@@ -27,7 +29,7 @@ int getpid(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
-void* mmap(uint64 addr, int len, int prot, int flags);
+void* mmap(uint64 addr, int len, int prot, int flags,int key);
 int munmap(void *addr, int len);
 
 

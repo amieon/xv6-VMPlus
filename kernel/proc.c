@@ -311,6 +311,10 @@ kfork(void)
   pid = np->pid;
 
   release(&np->lock);
+  
+  acquire(&wait_lock);
+  memmove(np->vmas, p->vmas, sizeof(p->vmas));
+  release(&wait_lock);
 
   acquire(&wait_lock);
   np->parent = p;

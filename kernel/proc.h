@@ -87,6 +87,8 @@ struct vma {
   uint64 end;   // [start, end)
   int prot;
   int flags;
+  int is_shm;    
+  int shm_key;    // 共享 key
 };
 
 // Per-process state

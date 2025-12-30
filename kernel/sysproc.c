@@ -211,13 +211,13 @@ uint64
 sys_mmap(void)
 {
   uint64 addr;
-  int len, prot, flags;
+  int len, prot, flags, key = -1;
 
   argaddr(0, &addr);
   argint(1, &len);
   argint(2, &prot);
   argint(3, &flags);
-
+  argint(4, &key);
 
   if(len <= 0) return -1;
   uint64 plen = PGROUNDUP((uint64)len);
@@ -241,8 +241,18 @@ sys_mmap(void)
   v->end = va + plen;
   v->prot = prot;
   v->flags = flags;
+  v->is_shm = 0;
+  v->shm_key = -1;
 
-  if(va < MMAPBASE || va + plen > MMAPTOP) return -1;
+  if(va < MMAPBASE || va + plen > MMAPTOP) return (uint64)-1;
+
+  if(flags & MAP_SHARED){
+    if(key < 0) return (uint64)-1;
+    int npages = plen / PGSIZE;
+    if(shm_get(key, npages) < 0) return (uint64)-1; 
+    v->is_shm = 1;
+    v->shm_key = key;
+  }
 
   return va;
 }
@@ -316,9 +326,12 @@ sys_munmap(void)
       uvmunmap(p->pagetable, seg_start, (seg_end - seg_start)/PGSIZE, 1);
     }
 
-    // 再更新 VMA（四种情况）
+    // 再更新VMA(四种情况)
     if(seg_start <= v->start && seg_end >= v->end){
-      // 覆盖整条 VMA：删除
+      // 覆盖整条VMA删除
+      if(v->is_shm){
+        shm_put(v->shm_key);
+      }
       v->used = 0;
       v->start = v->end = 0;
       v->prot = v->flags = 0;

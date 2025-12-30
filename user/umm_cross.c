@@ -6,8 +6,8 @@
 int
 main(void)
 {
-  char *a = mmap(0, 2*4096, PROT_READ|PROT_WRITE, MAP_ANON);
-  char *b = mmap(0, 2*4096, PROT_READ|PROT_WRITE, MAP_ANON);
+  char *a = mmap(0, 2*4096, PROT_READ|PROT_WRITE, MAP_ANON, 1);
+  char *b = mmap(0, 2*4096, PROT_READ|PROT_WRITE, MAP_ANON, 1);
   if(a == (char*)-1 || b == (char*)-1){
     printf("mmap failed\n");
     exit(1);
