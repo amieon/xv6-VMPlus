@@ -171,16 +171,7 @@ vma_find(struct proc *p, uint64 va)
   return 0;
 }
 
-static int
-vma_find_index(struct proc *p, uint64 addr)
-{
-  for(int i = 0; i < NVMA; i++){
-    if(!p->vmas[i].used) continue;
-    if(addr >= p->vmas[i].start && addr < p->vmas[i].end)
-      return i;
-  }
-  return -1;
-}
+
 static int
 vma_alloc_index(struct proc *p)
 {

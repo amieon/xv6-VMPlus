@@ -156,6 +156,10 @@ UPROGS=\
 	$U/_mmap_no_unmap\
 	$U/_mmap_rw_test\
 	$U/_mmap_ro_kill\
+	$U/_umm_cross\
+	$U/_umm_head\
+	$U/_umm_mid\
+	$U/_umm_tail\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
