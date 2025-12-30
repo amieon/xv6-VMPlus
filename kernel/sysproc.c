@@ -191,6 +191,31 @@ vma_alloc_index(struct proc *p)
   return -1;
 }
 
+static int
+vma_find_overlap(struct proc *p, uint64 a, uint64 b)
+{
+  for(int i = 0; i < NVMA; i++){
+    if(!p->vmas[i].used) continue;
+    uint64 s = p->vmas[i].start;
+    uint64 e = p->vmas[i].end;
+    if(!(b <= s || a >= e))   // overlap
+      return i;
+  }
+  return -1;
+}
+
+static uint64
+vma_next_start(struct proc *p, uint64 x)
+{
+  uint64 best = (uint64)-1;
+  for(int i = 0; i < NVMA; i++){
+    if(!p->vmas[i].used) continue;
+    uint64 s = p->vmas[i].start;
+    if(s >= x && s < best) best = s;
+  }
+  return best;
+}
+
 uint64
 sys_mmap(void)
 {
@@ -236,76 +261,96 @@ uint64
 sys_munmap(void)
 {
   struct proc *p = myproc();
-  uint64 addr;
+  uint64 uaddr;
   int len;
 
-  argaddr(0, &addr);
+  argaddr(0, &uaddr);
   argint(1, &len);
 
   if(len <= 0) return (uint64)-1;
-  if(addr % PGSIZE) return (uint64)-1;
 
-  uint64 unmap_len = PGROUNDUP((uint64)len);
-  uint64 unmap_start = addr;
-  uint64 unmap_end = addr + unmap_len;
 
-  // 溢出保护
-  if(unmap_end < unmap_start) return (uint64)-1;
+  uint64 a = PGROUNDDOWN(uaddr);
+  uint64 b = PGROUNDUP(uaddr + (uint64)len);
+  if(b < a) return (uint64)-1;  // 溢出了
 
-  int vi = vma_find_index(p, unmap_start);
-  if(vi < 0) return (uint64)-1;
+  // 为了保证一致性，我们先预检查split槽位是否够 
+  int need_splits = 0;
+  int free_slots = 0;
+  for(int i=0;i<NVMA;i++) if(!p->vmas[i].used) free_slots++;
 
-  struct vma *v = &p->vmas[vi];
+  // 扫描所有受影响 VMA，统计“中间切”次数
+  uint64 cur = a;
+  while(cur < b){
+    int vi = vma_find_overlap(p, cur, b);
+    if(vi < 0){
+      uint64 ns = vma_next_start(p, cur);
+      if(ns == (uint64)-1 || ns >= b) break;
+      cur = ns;
+      continue;
+    }
+    struct vma *v = &p->vmas[vi];
+    uint64 seg_start = cur > v->start ? cur : v->start;
+    uint64 seg_end   = b   < v->end   ? b   : v->end;
 
-  // 要求整个范围落在同一个 VMA 里（最小版）
-  if(unmap_end > v->end) return (uint64)-1;
+    // 如果切在中间需要 split
+    if(v->start < seg_start && seg_end < v->end)
+      need_splits++;
 
-  // 先拆页表映射（已分配的页会被释放；未分配的页 uvmunmap 会跳过）
-  uvmunmap(p->pagetable, unmap_start, unmap_len/PGSIZE, 1);
-
-  // 4种情况
-  // 从头删
-  if(unmap_start == v->start && unmap_end < v->end){
-    v->start = unmap_end;
-    return 0;
+    cur = seg_end;
   }
 
-  // 从尾删
-  if(unmap_start > v->start && unmap_end == v->end){
-    v->end = unmap_start;
-    return 0;
+  if(need_splits > free_slots){
+    // 不做任何事，保持一致性
+    return (uint64)-1;
   }
 
-  // 正好整段删光
-  if(unmap_start == v->start && unmap_end == v->end){
-    v->used = 0;
-    v->start = v->end = 0;
-    v->prot = v->flags = 0;
-    return 0;
-  }
-
-  // 中间删 -> 分裂成两段
-  // [v->start .... unmap_start)  和  [unmap_end .... v->end)
-  if(unmap_start > v->start && unmap_end < v->end){
-    int ni = vma_alloc_index(p);
-    if(ni < 0){
-      // 没槽位可分裂：这里返回 -1 会导致“页表已拆但 VMA 没更新”
-      // 为了稳，宁可直接 kill 或 panic，但实验建议：返回 -1 并 setkilled 更直观
-      // 简单处理：直接 panic，逼你增大 NVMA 或实现合并策略
-      panic("munmap: no vma slot for split");
+  //真正执行 unmap
+  cur = a;
+  while(cur < b){
+    int vi = vma_find_overlap(p, cur, b);
+    if(vi < 0){
+      uint64 ns = vma_next_start(p, cur);
+      if(ns == (uint64)-1 || ns >= b) break;
+      cur = ns;
+      continue;
     }
 
-    // 新 VMA 记录右半段
-    p->vmas[ni] = *v;
-    p->vmas[ni].start = unmap_end;
-    p->vmas[ni].end   = v->end;
+    struct vma *v = &p->vmas[vi];
+    uint64 seg_start = cur > v->start ? cur : v->start;
+    uint64 seg_end   = b   < v->end   ? b   : v->end;
 
-    // 原 VMA 变成左半段
-    v->end = unmap_start;
+    // 先拆页表（按页）
+    if(seg_end > seg_start){
+      uvmunmap(p->pagetable, seg_start, (seg_end - seg_start)/PGSIZE, 1);
+    }
 
-    return 0;
+    // 再更新 VMA（四种情况）
+    if(seg_start <= v->start && seg_end >= v->end){
+      // 覆盖整条 VMA：删除
+      v->used = 0;
+      v->start = v->end = 0;
+      v->prot = v->flags = 0;
+    } else if(seg_start <= v->start && seg_end < v->end){
+      // 从头砍
+      v->start = seg_end;
+    } else if(seg_start > v->start && seg_end >= v->end){
+      // 从尾砍
+      v->end = seg_start;
+    } else {
+      // 中间砍
+      int ni = vma_alloc_index(p);
+      // 预检查保证一定有
+      p->vmas[ni] = *v;
+      p->vmas[ni].start = seg_end;
+      p->vmas[ni].end   = v->end;
+
+      v->end = seg_start;
+    }
+
+    cur = seg_end;
   }
 
-  // 理论上不会走到这
-  return (uint64)-1;
+  return 0;
 }
+
