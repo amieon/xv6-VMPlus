@@ -206,7 +206,17 @@ vma_next_start(struct proc *p, uint64 x)
   }
   return best;
 }
-
+static int
+proc_has_shm_key(struct proc *p, int key, struct vma *skip)
+{
+  for(int i = 0; i < NVMA; i++){
+    struct vma *v = &p->vmas[i];
+    if(v == skip) continue;
+    if(v->used && v->is_shm && v->shm_key == key)
+      return 1;
+  }
+  return 0;
+}
 uint64
 sys_mmap(void)
 {
@@ -264,17 +274,7 @@ sys_mmap(void)
   return va;
 }
 
-static int
-proc_has_shm_key(struct proc *p, int key, struct vma *skip)
-{
-  for(int i = 0; i < NVMA; i++){
-    struct vma *v = &p->vmas[i];
-    if(v == skip) continue;
-    if(v->used && v->is_shm && v->shm_key == key)
-      return 1;
-  }
-  return 0;
-}
+
 static void
 vma_delete(struct proc *p, struct vma *v)
 {

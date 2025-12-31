@@ -152,17 +152,27 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
-static void
-freeproc(struct proc *p)
-{
-  if(p->trapframe)
-    kfree((void*)p->trapframe);
-  p->trapframe = 0;
-  if(p->pagetable){
-    vma_unmap_pagetable(p->pagetable, p->vmas);
-    memset(p->vmas, 0, sizeof(p->vmas));
-    proc_freepagetable(p->pagetable, p->sz);
+void
+delete_shm_from_vmas(struct vma *vmas){
+  for(int i = 0; i < NVMA; i++){
+    if(!vmas[i].used || !vmas[i].is_shm) continue;
+    int key = vmas[i].shm_key;
+
+    // 去重：只 put 一次
+    int seen = 0;
+    for(int j = 0; j < i; j++){
+      if(vmas[j].used && vmas[j].is_shm && vmas[j].shm_key == key){
+        seen = 1;
+        break;
+      }
+    }
+    if(seen) continue;
+
+    shm_put(key);
   }
+}
+void
+delete_shm_from_proc(struct proc *p){
   for(int i = 0; i < NVMA; i++){
     if(!p->vmas[i].used || !p->vmas[i].is_shm) continue;
     int key = p->vmas[i].shm_key;
@@ -179,6 +189,19 @@ freeproc(struct proc *p)
 
     shm_put(key);
   }
+}
+static void
+freeproc(struct proc *p)
+{
+  if(p->trapframe)
+    kfree((void*)p->trapframe);
+  p->trapframe = 0;
+  if(p->pagetable){
+    vma_unmap_pagetable(p->pagetable, p->vmas);
+    memset(p->vmas, 0, sizeof(p->vmas));
+    proc_freepagetable(p->pagetable, p->sz);
+  }
+  delete_shm_from_proc(p);
 
   p->pagetable = 0;
   p->sz = 0;

@@ -141,10 +141,7 @@ kexec(char *path, char **argv)
   memset(p->vmas, 0, sizeof(p->vmas));
 
   // 先在旧页表上拆掉旧 VMA 映射，再释放旧页表
-  for(int i=0;i<NVMA;++i){
-    if(oldvmas[i].used && oldvmas[i].is_shm)
-      shm_put(oldvmas[i].shm_key);
-  }
+  delete_shm_from_vmas(oldvmas);
   vma_unmap_pagetable(oldpagetable, oldvmas);
   proc_freepagetable(oldpagetable, oldsz);
 
@@ -153,10 +150,7 @@ kexec(char *path, char **argv)
 
  bad:
   if(pagetable){
-    for(int i=0;i<NVMA;++i){
-      if(p->vmas[i].used && p->vmas[i].is_shm)
-        shm_put(p->vmas[i].shm_key);
-    }
+    delete_shm_from_proc(p);
     vma_unmap_pagetable(p->pagetable, p->vmas);
     memset(p->vmas, 0, sizeof(p->vmas));
     proc_freepagetable(p->pagetable, p->sz);
