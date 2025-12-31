@@ -189,6 +189,9 @@ void            shm_init(void);
 int             shm_get(int key, int npages);
 void            shm_put(int key);
 uint64          shm_getpa(int key, int page_index);
+int             shm_ctl(int key, int cmd);
+int             shm_is_deleted(int key);
+//void            shm_dump(int key);
 
 
 // plic.c

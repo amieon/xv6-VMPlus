@@ -31,6 +31,11 @@ int pause(int);
 int uptime(void);
 void* mmap(uint64 addr, int len, int prot, int flags,int key);
 int munmap(void *addr, int len);
+int shmctl(int key, int cmd);
+int pause(int);
+int sleep(int);
+
+
 
 
 

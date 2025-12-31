@@ -45,7 +45,7 @@ forktest(void)
 
   print("fork test\n");
   32:	00000517          	auipc	a0,0x0
-  36:	3f650513          	addi	a0,a0,1014 # 428 <munmap+0xe>
+  36:	40650513          	addi	a0,a0,1030 # 438 <sleep+0xe>
   3a:	fc7ff0ef          	jal	ra,0 <print>
 
   for(n=0; n<N; n++){
@@ -67,7 +67,7 @@ forktest(void)
   if(n == N){
     print("fork claimed to work N times!\n");
   54:	00000517          	auipc	a0,0x0
-  58:	3e450513          	addi	a0,a0,996 # 438 <munmap+0x1e>
+  58:	3f450513          	addi	a0,a0,1012 # 448 <sleep+0x1e>
   5c:	fa5ff0ef          	jal	ra,0 <print>
     exit(1);
   60:	4505                	li	a0,1
@@ -104,7 +104,7 @@ forktest(void)
 
   print("fork test OK\n");
   90:	00000517          	auipc	a0,0x0
-  94:	3f850513          	addi	a0,a0,1016 # 488 <munmap+0x6e>
+  94:	40850513          	addi	a0,a0,1032 # 498 <sleep+0x6e>
   98:	f69ff0ef          	jal	ra,0 <print>
 }
   9c:	60e2                	ld	ra,24(sp)
@@ -115,14 +115,14 @@ forktest(void)
   a6:	8082                	ret
       print("wait stopped early\n");
   a8:	00000517          	auipc	a0,0x0
-  ac:	3b050513          	addi	a0,a0,944 # 458 <munmap+0x3e>
+  ac:	3c050513          	addi	a0,a0,960 # 468 <sleep+0x3e>
   b0:	f51ff0ef          	jal	ra,0 <print>
       exit(1);
   b4:	4505                	li	a0,1
   b6:	2bc000ef          	jal	ra,372 <exit>
     print("wait got too many\n");
   ba:	00000517          	auipc	a0,0x0
-  be:	3b650513          	addi	a0,a0,950 # 470 <munmap+0x56>
+  be:	3c650513          	addi	a0,a0,966 # 480 <sleep+0x56>
   c2:	f3fff0ef          	jal	ra,0 <print>
     exit(1);
   c6:	4505                	li	a0,1
@@ -144,9 +144,9 @@ main(void)
   da:	298000ef          	jal	ra,372 <exit>
 
 00000000000000de <start>:
-//
 // wrapper so that it's OK if main() does not call exit().
 //
+
 void
 start(int argc, char **argv)
 {
@@ -839,3 +839,23 @@ munmap:
  41c:	00000073          	ecall
  ret
  420:	8082                	ret
+
+0000000000000422 <shmctl>:
+.global shmctl
+shmctl:
+ li a7, SYS_shmctl
+ 422:	48e1                	li	a7,24
+ ecall
+ 424:	00000073          	ecall
+ ret
+ 428:	8082                	ret
+
+000000000000042a <sleep>:
+.global sleep
+sleep:
+ li a7, SYS_sleep
+ 42a:	48e5                	li	a7,25
+ ecall
+ 42c:	00000073          	ecall
+ ret
+ 430:	8082                	ret

@@ -217,11 +217,15 @@ proc_has_shm_key(struct proc *p, int key, struct vma *skip)
   }
   return 0;
 }
+
 uint64
 sys_mmap(void)
 {
   uint64 addr;
   int len, prot, flags, key = -1;
+  int did_shm_get = 0;
+  int need_get = 0;
+  int npages = 0;
 
   argaddr(0, &addr);
   argint(1, &len);
@@ -229,50 +233,76 @@ sys_mmap(void)
   argint(3, &flags);
   argint(4, &key);
 
-  if(len <= 0) return -1;
+  if(len <= 0) return (uint64)-1;
   uint64 plen = PGROUNDUP((uint64)len);
-  if(plen == 0) return -1;                
-  if(plen > (MMAPTOP - MMAPBASE)) return -1;
+  if(plen == 0) return (uint64)-1;
+  if(plen > (MMAPTOP - MMAPBASE)) return (uint64)-1;
 
-  if((prot & ~(PROT_READ|PROT_WRITE)) != 0) return -1;  
-  if((flags & MAP_ANON) == 0) return -1;
-  if(addr != 0) return -1;            
+  if((prot & ~(PROT_READ|PROT_WRITE)) != 0) return (uint64)-1;
+  if((flags & MAP_ANON) == 0) return (uint64)-1;
+  if(addr != 0) return (uint64)-1;
 
   struct proc *p = myproc();
+
+  //先把“是否需要 shm_get”算出来（此时还没创建/污染 vma）
+  if(flags & MAP_SHARED){
+    if(key < 0) return (uint64)-1;
+    npages = plen / PGSIZE;
+
+    // rmid 后禁止新 attach
+    if(shm_is_deleted(key))
+      return (uint64)-1;
+
+    // 按进程计数：本进程首次引用才 shm_get
+    if(!proc_has_shm_key(p, key, 0))
+      need_get = 1;
+  }
 
   struct vma *v = vma_alloc_slot(p);
   if(v == 0) return (uint64)-1;
 
-  uint64 va = vma_find_space(p, plen);
-  if(va == 0) return (uint64)-1;
-  
-  v->used = 1;
-  v->start = va;
-  v->end = va + plen;
-  v->prot = prot;
-  v->flags = flags;
-  v->is_shm = 0;
+  // 先清空这条 slot，避免失败时留下脏状态
+  memset(v, 0, sizeof(*v));
   v->shm_key = -1;
 
-  if(va < MMAPBASE || va + plen > MMAPTOP) return (uint64)-1;
+  uint64 va = vma_find_space(p, plen);
+  if(va == 0) goto bad;
+  if(va < MMAPBASE || va + plen > MMAPTOP) goto bad;
+
+  // 先写入 vma 基本信息
+  v->used  = 1;
+  v->start = va;
+  v->end   = va + plen;
+  v->prot  = prot;
+  v->flags = flags;
 
   if(flags & MAP_SHARED){
-    if(key < 0) return (uint64)-1;
-    int npages = plen / PGSIZE;
-
-    // 只有当前进程之前没有引用该 key，才 shm_get 一次
-    if(!proc_has_shm_key(p, key, 0)){
+    if(need_get){
       if(shm_get(key, npages) < 0)
-        return (uint64)-1;
+        goto bad;
+      did_shm_get = 1;
     }
-
     v->is_shm = 1;
     v->shm_key = key;
   }
 
-
   return va;
+
+bad:
+  if(did_shm_get){
+    shm_put(key);
+  }
+  if(v){
+    v->used = 0;
+    v->is_shm = 0;
+    v->shm_key = -1;
+    v->start = v->end = 0;
+    v->prot = v->flags = 0;
+  }
+  return (uint64)-1;
 }
+
+
 
 
 static void
@@ -282,6 +312,9 @@ vma_delete(struct proc *p, struct vma *v)
 
   if(v->is_shm){
     int key = v->shm_key;
+    // printf("vma_delete: key=%d last=%d\n",
+    //    key, !proc_has_shm_key(p, key, v));
+
     // 只有当“删掉 v 之后进程里不再有该 key 的 VMA”，才 shm_put
     if(!proc_has_shm_key(p, key, v)){
       shm_put(key);
@@ -367,6 +400,9 @@ sys_munmap(void)
     // 再更新VMA(四种情况)
     if(seg_start <= v->start && seg_end >= v->end){
       // 覆盖整条VMA删除
+      // printf("munmap: deleting vma key=%d used=%d [%p,%p)\n",
+      //  v->shm_key, v->used, (void *)v->start, (void *)v->end);
+
       vma_delete(p, v);
     } else if(seg_start <= v->start && seg_end < v->end){
       // 从头砍
@@ -387,7 +423,38 @@ sys_munmap(void)
 
     cur = seg_end;
   }
-
+  //shm_dump(1);
   return 0;
 }
 
+uint64
+sys_shmctl(void)
+{
+  int key, cmd;
+  argint(0, &key);
+  argint(1, &cmd);
+  return shm_ctl(key, cmd);
+}
+
+uint64
+sys_sleep(void)
+{
+  int n;
+  uint ticks0;
+
+  argint(0, &n);
+  if(n < 0)
+    return -1;
+
+  acquire(&tickslock);
+  ticks0 = ticks;
+  while(ticks - ticks0 < n){
+    if(killed(myproc())){
+      release(&tickslock);
+      return -1;
+    }
+    sleep(&ticks, &tickslock);  
+  }
+  release(&tickslock);
+  return 0;
+}

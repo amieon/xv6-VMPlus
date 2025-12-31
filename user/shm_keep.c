@@ -1,8 +1,9 @@
 #include "../kernel/types.h"
 #include "../kernel/stat.h"
+#include "../kernel/shm.h"
 #include "user.h"
 
-int
+int 
 main(void)
 {
   int key = 1;
@@ -17,16 +18,14 @@ main(void)
     // child：持有映射，写入，然后睡一会儿别退出
     p[0] = 99;
     printf("child wrote 99\n");
-    for(int i=0;i<100000000;++i)
-        ;
+    sleep(50);
     printf("child still sees %d\n", p[0]);
     munmap(p, 4096);
     exit(0);
   }
 
   // parent：等 child 写完
-    for(int i=0;i<10000000;++i)
-        ;
+  sleep(20);
   printf("parent sees %d before unmap\n", p[0]);
 
   // parent 解除映射

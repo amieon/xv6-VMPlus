@@ -190,9 +190,46 @@ delete_shm_from_proc(struct proc *p){
     shm_put(key);
   }
 }
+
+static void
+vma_release_all(struct proc *p)
+{
+  // 对每个 key 去重 shm_put（按进程计数）
+  for(int i = 0; i < NVMA; i++){
+    if(!p->vmas[i].used || !p->vmas[i].is_shm)
+      continue;
+
+    int key = p->vmas[i].shm_key;
+
+    // 去重, 如果前面已经处理过这个 key，就跳过
+    int seen = 0;
+    for(int j = 0; j < i; j++){
+      if(p->vmas[j].used && p->vmas[j].is_shm && p->vmas[j].shm_key == key){
+        seen = 1;
+        break;
+      }
+    }
+    if(seen) continue;
+
+    shm_put(key);
+  }
+
+  // 清空所有 VMA 记录（不在这里逐条 vma_delete，避免重复 put）
+  for(int i = 0; i < NVMA; i++){
+    if(p->vmas[i].used){
+      p->vmas[i].used = 0;
+      p->vmas[i].is_shm = 0;
+      p->vmas[i].shm_key = -1;
+      p->vmas[i].start = p->vmas[i].end = 0;
+      p->vmas[i].prot = p->vmas[i].flags = 0;
+    }
+  }
+}
+
 static void
 freeproc(struct proc *p)
 {
+  vma_release_all(p);
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;

@@ -187,6 +187,8 @@ uvmcreate()
   return pagetable;
 }
 
+
+
 // Remove npages of mappings starting from va. va must be
 // page-aligned. It's OK if the mappings don't exist.
 // Optionally free the physical memory.
@@ -258,6 +260,8 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 
   return newsz;
 }
+
+
 
 // Recursively free page-table pages.
 // All leaf mappings must already have been removed.

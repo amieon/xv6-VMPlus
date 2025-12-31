@@ -1,2 +1,2 @@
 user/shm_keep.o: user/shm_keep.c user/../kernel/types.h \
- user/../kernel/stat.h user/user.h
+ user/../kernel/stat.h user/../kernel/shm.h user/user.h

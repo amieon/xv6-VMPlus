@@ -163,6 +163,7 @@ UPROGS=\
 	$U/_umm_tail\
 	$U/_shm_test1\
 	$U/_shm_keep\
+	$U/_shm_rmid\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

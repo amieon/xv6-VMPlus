@@ -115,3 +115,13 @@ munmap:
  li a7, SYS_munmap
  ecall
  ret
+.global shmctl
+shmctl:
+ li a7, SYS_shmctl
+ ecall
+ ret
+.global sleep
+sleep:
+ li a7, SYS_sleep
+ ecall
+ ret
