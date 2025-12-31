@@ -249,12 +249,50 @@ sys_mmap(void)
   if(flags & MAP_SHARED){
     if(key < 0) return (uint64)-1;
     int npages = plen / PGSIZE;
-    if(shm_get(key, npages) < 0) return (uint64)-1; 
+
+    // 只有当前进程之前没有引用该 key，才 shm_get 一次
+    if(!proc_has_shm_key(p, key, 0)){
+      if(shm_get(key, npages) < 0)
+        return (uint64)-1;
+    }
+
     v->is_shm = 1;
     v->shm_key = key;
   }
 
+
   return va;
+}
+
+static int
+proc_has_shm_key(struct proc *p, int key, struct vma *skip)
+{
+  for(int i = 0; i < NVMA; i++){
+    struct vma *v = &p->vmas[i];
+    if(v == skip) continue;
+    if(v->used && v->is_shm && v->shm_key == key)
+      return 1;
+  }
+  return 0;
+}
+static void
+vma_delete(struct proc *p, struct vma *v)
+{
+  if(v->used == 0) return;
+
+  if(v->is_shm){
+    int key = v->shm_key;
+    // 只有当“删掉 v 之后进程里不再有该 key 的 VMA”，才 shm_put
+    if(!proc_has_shm_key(p, key, v)){
+      shm_put(key);
+    }
+  }
+
+  v->used = 0;
+  v->start = v->end = 0;
+  v->prot = v->flags = 0;
+  v->is_shm = 0;
+  v->shm_key = -1;
 }
 
 
@@ -329,12 +367,7 @@ sys_munmap(void)
     // 再更新VMA(四种情况)
     if(seg_start <= v->start && seg_end >= v->end){
       // 覆盖整条VMA删除
-      if(v->is_shm){
-        shm_put(v->shm_key);
-      }
-      v->used = 0;
-      v->start = v->end = 0;
-      v->prot = v->flags = 0;
+      vma_delete(p, v);
     } else if(seg_start <= v->start && seg_end < v->end){
       // 从头砍
       v->start = seg_end;

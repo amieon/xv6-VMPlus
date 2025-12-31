@@ -163,10 +163,23 @@ freeproc(struct proc *p)
     memset(p->vmas, 0, sizeof(p->vmas));
     proc_freepagetable(p->pagetable, p->sz);
   }
-  for(int i=0;i<NVMA;++i){
-    if(p->vmas[i].used && p->vmas[i].is_shm)
-      shm_put(p->vmas[i].shm_key);
+  for(int i = 0; i < NVMA; i++){
+    if(!p->vmas[i].used || !p->vmas[i].is_shm) continue;
+    int key = p->vmas[i].shm_key;
+
+    // 去重：只 put 一次
+    int seen = 0;
+    for(int j = 0; j < i; j++){
+      if(p->vmas[j].used && p->vmas[j].is_shm && p->vmas[j].shm_key == key){
+        seen = 1;
+        break;
+      }
+    }
+    if(seen) continue;
+
+    shm_put(key);
   }
+
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -315,29 +328,33 @@ kfork(void)
   pid = np->pid;
 
   release(&np->lock);
-  
+
   // 复制 VMA 记录（这里应该不需要锁）
   memmove(np->vmas, p->vmas, sizeof(p->vmas));
 
   // fork 后子进程也引用同一个 shmobj：refcnt++
-  // 按“每条 VMA 引用一次”计数，而不是按页计数
+  // 每个 key 只 ref++ 一次
+  // 按进程计数，而不是按 VAM 计数
   for(int i = 0; i < NVMA; i++){
-    if(np->vmas[i].used && np->vmas[i].is_shm){
-      int npages = (np->vmas[i].end - np->vmas[i].start) / PGSIZE;
-      if(npages <= 0)
-        panic("fork: bad shm vma");
+    if(!np->vmas[i].used || !np->vmas[i].is_shm) continue;
+    int key = np->vmas[i].shm_key;
 
-      // 只做引用+1，不需要真的分配页（页仍由 fault 时 shm_getpa 懒分配）
-      if(shm_get(np->vmas[i].shm_key, npages) < 0){
+    // 看看这个 key 在 i 之前是否已经处理过（去重）
+    int seen = 0;
+    for(int j = 0; j < i; j++){
+      if(np->vmas[j].used && np->vmas[j].is_shm && np->vmas[j].shm_key == key){
+        seen = 1;
+        break;
+      }
+    }
+    if(seen) continue;
+
+    int npages = (np->vmas[i].end - np->vmas[i].start) / PGSIZE;
+    if(shm_get(key, npages) < 0){
         // 失败就必须回滚，把之前加过的引用减掉，否则泄漏
-        for(int j = 0; j < i; j++){
-          if(np->vmas[j].used && np->vmas[j].is_shm){
-            shm_put(np->vmas[j].shm_key);
-          }
-        }
+        // 这里把回滚放到 freeproc 里面了
         freeproc(np);
         return -1;
-      }
     }
   }
 
