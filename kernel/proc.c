@@ -316,9 +316,31 @@ kfork(void)
 
   release(&np->lock);
   
-  acquire(&wait_lock);
+  // 复制 VMA 记录（这里应该不需要锁）
   memmove(np->vmas, p->vmas, sizeof(p->vmas));
-  release(&wait_lock);
+
+  // fork 后子进程也引用同一个 shmobj：refcnt++
+  // 按“每条 VMA 引用一次”计数，而不是按页计数
+  for(int i = 0; i < NVMA; i++){
+    if(np->vmas[i].used && np->vmas[i].is_shm){
+      int npages = (np->vmas[i].end - np->vmas[i].start) / PGSIZE;
+      if(npages <= 0)
+        panic("fork: bad shm vma");
+
+      // 只做引用+1，不需要真的分配页（页仍由 fault 时 shm_getpa 懒分配）
+      if(shm_get(np->vmas[i].shm_key, npages) < 0){
+        // 失败就必须回滚，把之前加过的引用减掉，否则泄漏
+        for(int j = 0; j < i; j++){
+          if(np->vmas[j].used && np->vmas[j].is_shm){
+            shm_put(np->vmas[j].shm_key);
+          }
+        }
+        freeproc(np);
+        return -1;
+      }
+    }
+  }
+
 
   acquire(&wait_lock);
   np->parent = p;
