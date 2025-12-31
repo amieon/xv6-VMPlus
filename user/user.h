@@ -34,6 +34,9 @@ int munmap(void *addr, int len);
 int shmctl(int key, int cmd);
 int pause(int);
 int sleep(int);
+int sem_open(int key, int init);
+int sem_wait(int key);
+int sem_post(int key);
 
 
 

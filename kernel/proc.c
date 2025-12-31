@@ -191,17 +191,33 @@ delete_shm_from_proc(struct proc *p){
   }
 }
 
-static void
+void
 vma_release_all(struct proc *p)
 {
-  // 对每个 key 去重 shm_put（按进程计数）
+  // 先把页表里的映射解除掉（否则 freewalk: leaf）
   for(int i = 0; i < NVMA; i++){
-    if(!p->vmas[i].used || !p->vmas[i].is_shm)
-      continue;
+    struct vma *v = &p->vmas[i];
+    if(!v->used) continue;
+
+    uint64 start = v->start;
+    uint64 end   = v->end;
+    if(end <= start) continue;
+
+    uint64 npages = (end - start) / PGSIZE;
+
+    // SHM：只解除映射，不 free 物理页（物理页由 shmobj 管）
+    // 非 SHM：解除映射并释放物理页（kfree 会走你的页引用计数/COW）
+    int do_free = (v->is_shm ? 0 : 1);
+
+    uvmunmap(p->pagetable, start, npages, do_free);
+  }
+
+  // 再按 key 去重 shm_put（按进程计数）
+  for(int i = 0; i < NVMA; i++){
+    if(!p->vmas[i].used || !p->vmas[i].is_shm) continue;
 
     int key = p->vmas[i].shm_key;
 
-    // 去重, 如果前面已经处理过这个 key，就跳过
     int seen = 0;
     for(int j = 0; j < i; j++){
       if(p->vmas[j].used && p->vmas[j].is_shm && p->vmas[j].shm_key == key){
@@ -214,7 +230,7 @@ vma_release_all(struct proc *p)
     shm_put(key);
   }
 
-  // 清空所有 VMA 记录（不在这里逐条 vma_delete，避免重复 put）
+  // 最后清空 VMA 元数据
   for(int i = 0; i < NVMA; i++){
     if(p->vmas[i].used){
       p->vmas[i].used = 0;

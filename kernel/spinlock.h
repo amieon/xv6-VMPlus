@@ -1,4 +1,5 @@
 // Mutual exclusion lock.
+typedef unsigned int   uint;
 struct spinlock {
   uint locked;       // Is the lock held?
 

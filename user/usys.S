@@ -125,3 +125,18 @@ sleep:
  li a7, SYS_sleep
  ecall
  ret
+.global sem_open
+sem_open:
+ li a7, SYS_sem_open
+ ecall
+ ret
+.global sem_wait
+sem_wait:
+ li a7, SYS_sem_wait
+ ecall
+ ret
+.global sem_post
+sem_post:
+ li a7, SYS_sem_post
+ ecall
+ ret

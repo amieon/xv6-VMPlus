@@ -105,6 +105,12 @@ extern uint64 sys_mmap(void);
 extern uint64 sys_munmap(void);
 extern uint64 sys_shmctl(void);
 extern uint64 sys_sleep(void);
+extern uint64 sys_sem_open(void);
+extern uint64 sys_sem_wait(void);
+extern uint64 sys_sem_post(void);
+
+
+
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -134,7 +140,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_munmap]  sys_munmap,
 [SYS_shmctl]  sys_shmctl,
 [SYS_sleep]   sys_sleep,
-
+[SYS_sem_open]   sys_sem_open,
+[SYS_sem_wait]   sys_sem_wait,
+[SYS_sem_post]   sys_sem_post,
 };
 
 void

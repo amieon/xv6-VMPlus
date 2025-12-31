@@ -11,6 +11,11 @@ struct superblock;
 struct vma;
 struct shmobj;
 
+
+#include"types.h"
+typedef uint64 *pagetable_t; // 512 PTEs
+typedef uint64 pte_t;
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -107,6 +112,7 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+void            vma_release_all(struct proc *p);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -182,6 +188,13 @@ int             cowbreak(pagetable_t pagetable, uint64 va);
 uint64          vmafault(struct proc *, uint64, int);
 void            delete_shm_from_vmas(struct vma *);
 void            delete_shm_from_proc(struct proc *);
+
+//sem.c
+void            seminit(void);
+int             sem_open(int key, int init);
+int             sem_wait(int key);
+int             sem_post(int key);
+
 
 
 //shm.c

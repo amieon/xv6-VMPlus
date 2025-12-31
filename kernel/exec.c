@@ -132,6 +132,7 @@ kexec(char *path, char **argv)
   memmove(oldvmas, p->vmas, sizeof(oldvmas));
 
   oldpagetable = p->pagetable;
+  vma_release_all(p);
   p->pagetable = pagetable;
   p->sz = sz;
   p->trapframe->epc = elf.entry;
@@ -153,6 +154,7 @@ kexec(char *path, char **argv)
     delete_shm_from_proc(p);
     vma_unmap_pagetable(p->pagetable, p->vmas);
     memset(p->vmas, 0, sizeof(p->vmas));
+    vma_release_all(p);
     proc_freepagetable(p->pagetable, p->sz);
   }
   if(ip){

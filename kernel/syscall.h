@@ -24,3 +24,6 @@
 #define SYS_munmap 23
 #define SYS_shmctl 24
 #define SYS_sleep  25
+#define SYS_sem_open  26
+#define SYS_sem_wait  27
+#define SYS_sem_post  28

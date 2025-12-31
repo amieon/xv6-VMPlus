@@ -46,3 +46,6 @@ entry("mmap");
 entry("munmap");
 entry("shmctl");
 entry("sleep");
+entry("sem_open");
+entry("sem_wait");
+entry("sem_post");
