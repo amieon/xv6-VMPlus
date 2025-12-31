@@ -163,6 +163,10 @@ freeproc(struct proc *p)
     memset(p->vmas, 0, sizeof(p->vmas));
     proc_freepagetable(p->pagetable, p->sz);
   }
+  for(int i=0;i<NVMA;++i){
+    if(p->vmas[i].used && p->vmas[i].is_shm)
+      shm_put(p->vmas[i].shm_key);
+  }
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
