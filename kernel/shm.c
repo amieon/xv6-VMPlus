@@ -53,7 +53,7 @@ shm_get(int key, int npages)
       shmt.obj[i].key = key;
       shmt.obj[i].npages = npages;
       shmt.obj[i].refcnt = 1;
-      for(int j=0;j<npages;j++) shmt.obj[i].pa[j] = 0;
+      for(int j=0;j<SHM_MAXPG;j++) shmt.obj[i].pa[j] = 0;
       release(&shmt.lock);
       return i;
     }
@@ -70,6 +70,8 @@ shm_put(int key)
   acquire(&shmt.lock);
   for(int i=0;i<NSHM;i++){
     if(shmt.obj[i].used && shmt.obj[i].key == key){
+      if(shmt.obj[i].refcnt < 1)
+        panic("shm_put: refcnt");
       shmt.obj[i].refcnt--;
       if(shmt.obj[i].refcnt == 0){
         for(int j=0;j<shmt.obj[i].npages;j++){
