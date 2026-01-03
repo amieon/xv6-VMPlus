@@ -140,3 +140,8 @@ sem_post:
  li a7, SYS_sem_post
  ecall
  ret
+.global vmstats
+vmstats:
+ li a7, SYS_vmstats
+ ecall
+ ret

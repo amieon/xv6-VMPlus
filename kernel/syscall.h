@@ -27,3 +27,4 @@
 #define SYS_sem_open  26
 #define SYS_sem_wait  27
 #define SYS_sem_post  28
+#define SYS_vmstats  29

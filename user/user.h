@@ -6,6 +6,8 @@
 
 
 struct stat;
+struct vmstats_user;
+
 
 // system calls
 int fork(void);
@@ -37,6 +39,7 @@ int sleep(int);
 int sem_open(int key, int init);
 int sem_wait(int key);
 int sem_post(int key);
+int vmstats(struct vmstats_user* uaddr);
 
 
 

@@ -5,7 +5,7 @@
 #include "riscv.h"
 #include "defs.h"
 #include "shm.h"
-
+#include "vmstats.h"
 
 
 struct shmobj {
@@ -21,6 +21,8 @@ static struct {
   struct spinlock lock;
   struct shmobj obj[NSHM];
 } shmt;
+
+
 
 void
 shm_init(void)
@@ -124,6 +126,8 @@ shm_getpa(int key, int page_index)
   }
 
   release(&shmt.lock);
+  vmstats_inc_shm();
+
   return pa;
 }
 

@@ -3,6 +3,8 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "defs.h"
+#include "spinlock.h"
+#include "vmstats.h"
 
 volatile static int started = 0;
 
@@ -16,6 +18,7 @@ main()
     printf("\n");
     printf("xv6 kernel is booting\n");
     printf("\n");
+    vmstatsinit();
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging

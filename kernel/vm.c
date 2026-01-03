@@ -7,7 +7,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "fs.h"
-
+#include "vmstats.h"
 
 /*
  * the kernel's page table.
@@ -389,6 +389,8 @@ cowbreak(pagetable_t pagetable, uint64 va)
   *pte = PA2PTE((uint64)mem) | ((flags | PTE_W) & ~PTE_COW) | PTE_V;
 
   sfence_vma();
+  vmstats_inc_cow();
+
   return 0;
 }
 
@@ -408,6 +410,7 @@ uvmclear(pagetable_t pagetable, uint64 va)
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
+
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
@@ -449,6 +452,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     len -= n;
     src += n;
     dstva = va0 + PGSIZE;
+    extern uint64 copyout_bytes;
+    copyout_bytes += n;
   }
   return 0;
 }
@@ -477,6 +482,8 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
     len -= n;
     dst += n;
     srcva = va0 + PGSIZE;
+    extern uint64 copyin_bytes;
+    copyin_bytes += n; 
   }
   return 0;
 }
@@ -615,6 +622,7 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     else kfree((void*)pa);
     return 0;
   }
+  vmstats_inc_lazy();
   return (uint64)pa;
 }
 

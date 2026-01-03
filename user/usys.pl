@@ -49,3 +49,4 @@ entry("sleep");
 entry("sem_open");
 entry("sem_wait");
 entry("sem_post");
+entry("vmstats");

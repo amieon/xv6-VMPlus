@@ -6,6 +6,8 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
+#include "vmstats.h"
+
 
 uint64
 sys_exit(void)
@@ -456,5 +458,25 @@ sys_sleep(void)
     sleep(&ticks, &tickslock);  
   }
   release(&tickslock);
+  return 0;
+}
+
+
+uint64
+sys_vmstats(void)
+{
+  uint64 uaddr;
+  argaddr(0, &uaddr);
+
+  struct vmstats_user s;
+  vmstats_snapshot(&s);
+
+  extern uint64 kalloc_cnt, copyin_bytes, copyout_bytes;
+  s.kalloc_cnt = kalloc_cnt;
+  s.copyin_bytes = copyin_bytes;
+  s.copyout_bytes = copyout_bytes;
+
+  if(copyout(myproc()->pagetable, uaddr, (char*)&s, sizeof(s)) < 0)
+    return -1;
   return 0;
 }

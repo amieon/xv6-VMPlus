@@ -10,6 +10,9 @@ struct stat;
 struct superblock;
 struct vma;
 struct shmobj;
+struct vmstats;
+struct vmstats_user;
+
 
 
 #include"types.h"
@@ -188,6 +191,16 @@ int             cowbreak(pagetable_t pagetable, uint64 va);
 uint64          vmafault(struct proc *, uint64, int);
 void            delete_shm_from_vmas(struct vma *);
 void            delete_shm_from_proc(struct proc *);
+
+//vmstats.c
+extern uint64   kalloc_cnt;
+extern uint64   copyin_bytes;
+extern uint64   copyout_bytes;
+void            vmstatsinit(void);
+void            vmstats_snapshot(struct vmstats_user *);
+void            vmstats_inc_cow(void);
+void            vmstats_inc_lazy(void);
+void            vmstats_inc_shm(void);
 
 //sem.c
 void            seminit(void);
