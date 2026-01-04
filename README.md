@@ -1,4 +1,26 @@
-# 操作系统实验（xv6 扩展：mmap / COW / 共享内存 / 信号量）
+## xv6-VMPlus 
+
+                                                                 #### 基于 xv6 操作系统的虚拟内存与高效 IPC 机制设计与实现
+
+
+
+## 项目简介
+
+This project extends xv6 with copy-on-write fork and zero-copy shared memory IPC.
+
+本项目基于教学操作系统 xv6，对其虚拟内存管理与进程间通信机制进行了系统级扩展。项目重点解决 xv6 在 fork、IPC 以及并发场景下的性能与语义局限，引入了写时复制（COW）、内存映射（mmap/munmap）、共享内存（SHM）以及基于阻塞的同步机制，使系统行为更接近真实操作系统。
+
+
+------
+
+
+## 快速打开实验文档
+
+- [实验文档](docs/实验文档.pdf)
+- [函数手册](docs/函数手册.pdf)
+
+
+------
 
 ## 编译与运行
 
@@ -16,19 +38,6 @@ make qemu
 # 4) 退出
 # Ctrl+a x
 ```
-
-## 快速打开实验文档 (位于docs文件夹里)
-
-- [实验文档](docs/实验文档.pdf)
-- [函数手册](docs/函数手册.pdf)
-
-## 项目简介
-
-This project extends xv6 with copy-on-write fork and zero-copy shared memory IPC.
-
-本项目基于教学操作系统 xv6，对其虚拟内存管理与进程间通信机制进行了系统级扩展。项目重点解决 xv6 在 fork、IPC 以及并发场景下的性能与语义局限，引入了写时复制（COW）、内存映射（mmap/munmap）、共享内存（SHM）以及基于阻塞的同步机制，使系统行为更接近真实操作系统。
-
-------
 
 ## 核心改造内容
 
@@ -67,3 +76,11 @@ This project extends xv6 with copy-on-write fork and zero-copy shared memory IPC
 - 第 3–5 章：虚拟内存、mmap、COW 与共享内存设计
 - 第 6 章：同步机制设计
 - 第 7 章：实验评估与性能分析
+
+
+
+## 队伍信息
+
+中国海洋大学 | T202510423998043 | 冲刺冲 | “OS原理”赛道 | vx6-VMPlus
+
+赛道为：各参赛队可结合本校操作系统课程实验内容，针对其中某个实验模块做拓展延伸和优化创新，引入更复杂的算法和更先进的设计，在功能、性能、可靠性等方面取得进步。推荐改进比较复杂的模块，如进程管理、内存管理、文件系统、并发控制等。
