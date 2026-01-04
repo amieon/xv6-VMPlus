@@ -1,5 +1,6 @@
 ## xv6-VMPlus 
 
+![Language](https://img.shields.io/badge/language-C%20%26%20Assembly-blue)![Arch](https://img.shields.io/badge/arch-RISC--V-green)![License](https://img.shields.io/badge/license-MIT-orange.svg)
 基于 xv6 操作系统的虚拟内存与高效 IPC 机制设计与实现
 
 
@@ -28,14 +29,18 @@ This project extends xv6 with copy-on-write fork and zero-copy shared memory IPC
 # 1) 进入工程目录
 cd <project3035746-357447>
 
-# 2) 编译
+# 2)安装交叉编译工具和 QEMU
+sudo apt update
+sudo apt install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-system-riscv64 qemu-user
+
+# 3) 编译
 make clean
 make TOOLPREFIX=riscv64-unknown-elf-
 
-# 3) 运行
+# 4) 运行
 make qemu
 
-# 4) 退出
+# 5) 退出
 # Ctrl+a x
 ```
 
