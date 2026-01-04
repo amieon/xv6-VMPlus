@@ -111,47 +111,94 @@ sys_uptime(void)
 }
 
 
-#define MMAPBASE  (0x40000000L)           // 1GB处，远离0起步的heap
-#define MMAPTOP   (TRAPFRAME - 10*PGSIZE) // 离 trapframe 留点余量
+/*
+ * 内存映射相关常量定义
+ */
+#define MMAPBASE  (0x40000000L)           // mmap内存区域起始地址（1GB处，远离堆）
+#define MMAPTOP   (TRAPFRAME - 10*PGSIZE) // mmap内存区域结束地址（离trapframe留有安全余量）
 
 
+/*
+ * 查找与给定地址范围冲突的VMA的最小结束地址
+ * 
+ * 参数：
+ *   p     - 进程指针
+ *   start - 检查的起始地址
+ *   end   - 检查的结束地址
+ * 
+ * 返回值：
+ *   与给定范围冲突的所有VMA中最小的结束地址；如果没有冲突则返回0
+ * 
+ * 用途：
+ *   在vma_find_space中用于快速跳过冲突区域，提高查找可用地址空间的效率
+ */
 static uint64
 vma_next_conflict_end(struct proc *p, uint64 start, uint64 end)
 {
   uint64 best = 0;
-  for(int i=0;i<NVMA;i++){
+  for(int i=0; i<NVMA; i++){
     if(!p->vmas[i].used) continue;
     uint64 s = p->vmas[i].start;
     uint64 e = p->vmas[i].end;
     if(!(end <= s || start >= e)){
-      // overlap，候选跳到这个vma的结尾
+      // 存在地址重叠，记录这个VMA的结束地址作为候选
       if(best == 0 || e < best) best = e;
     }
   }
   return best; // 0表示无冲突
 }
 
+/*
+ * 查找适合映射指定长度内存的可用虚拟地址空间
+ * 
+ * 参数：
+ *   p   - 进程指针
+ *   len - 需要映射的内存长度
+ * 
+ * 返回值：
+ *   找到的可用虚拟地址起始位置；如果没有足够空间则返回0
+ * 
+ * 查找范围：
+ *   在MMAPBASE到MMAPTOP之间查找连续的、大小为PGROUNDUP(len)的空闲区域
+ * 
+ * 算法：
+ *   使用快速跳转算法，跳过已知的冲突区域，提高查找效率
+ */
 static uint64
 vma_find_space(struct proc *p, uint64 len)
 {
-  len = PGROUNDUP(len);
+  len = PGROUNDUP(len);  // 将长度向上对齐到页边界
 
+  // 在MMAP区域内查找可用空间
   for(uint64 va = MMAPBASE; va + len < MMAPTOP; ){
     uint64 start = va;
     uint64 end = va + len;
 
+    // 检查当前地址范围是否与现有VMA冲突
     uint64 jump = vma_next_conflict_end(p, start, end);
     if(jump == 0){
-      return start; // 找到空洞
+      return start;  // 找到没有冲突的空闲区域
     }
 
-    // 跳到冲突区域末尾，再页对齐
+    // 跳到冲突区域的末尾，继续查找
     va = PGROUNDUP(jump);
   }
-  return 0;
+  return 0;  // 没有找到足够大小的空闲区域
 }
 
 
+/*
+ * 分配一个空闲的VMA槽位
+ * 
+ * 参数：
+ *   p - 进程指针
+ * 
+ * 返回值：
+ *   指向空闲VMA槽位的指针；如果没有空闲槽位则返回0
+ * 
+ * 说明：
+ *   每个进程有NVMA个VMA槽位，用于跟踪进程的内存映射
+ */
 static struct vma*
 vma_alloc_slot(struct proc *p)
 {
@@ -159,9 +206,22 @@ vma_alloc_slot(struct proc *p)
     if(!p->vmas[i].used)
       return &p->vmas[i];
   }
-  return 0;
+  return 0;  // 没有空闲的VMA槽位
 }
 
+/*
+ * 根据虚拟地址查找对应的VMA
+ * 
+ * 参数：
+ *   p  - 进程指针
+ *   va - 要查找的虚拟地址
+ * 
+ * 返回值：
+ *   指向包含该虚拟地址的VMA的指针；如果没有找到则返回0
+ * 
+ * 注意：
+ *   该函数是内核导出的公共接口，用于内存管理和缺页异常处理
+ */
 struct vma*
 vma_find(struct proc *p, uint64 va)
 {
@@ -170,10 +230,22 @@ vma_find(struct proc *p, uint64 va)
     if(va >= p->vmas[i].start && va < p->vmas[i].end)
       return &p->vmas[i];
   }
-  return 0;
+  return 0;  // 没有找到包含该虚拟地址的VMA
 }
 
 
+/*
+ * 分配一个空闲的VMA索引
+ * 
+ * 参数：
+ *   p - 进程指针
+ * 
+ * 返回值：
+ *   空闲VMA的索引；如果没有空闲槽位则返回-1
+ * 
+ * 用途：
+ *   主要用于VMA分割操作，当需要将一个VMA分成两个时使用
+ */
 static int
 vma_alloc_index(struct proc *p)
 {
@@ -181,9 +253,23 @@ vma_alloc_index(struct proc *p)
     if(!p->vmas[i].used)
       return i;
   }
-  return -1;
+  return -1;  // 没有空闲的VMA索引
 }
 
+/*
+ * 查找与给定地址范围重叠的VMA
+ * 
+ * 参数：
+ *   p - 进程指针
+ *   a - 检查的起始地址
+ *   b - 检查的结束地址
+ * 
+ * 返回值：
+ *   与给定范围重叠的第一个VMA的索引；如果没有重叠则返回-1
+ * 
+ * 重叠判断条件：
+ *   当!(b <= s || a >= e)时存在重叠
+ */
 static int
 vma_find_overlap(struct proc *p, uint64 a, uint64 b)
 {
@@ -191,12 +277,25 @@ vma_find_overlap(struct proc *p, uint64 a, uint64 b)
     if(!p->vmas[i].used) continue;
     uint64 s = p->vmas[i].start;
     uint64 e = p->vmas[i].end;
-    if(!(b <= s || a >= e))   // overlap
+    if(!(b <= s || a >= e))   // 存在地址重叠
       return i;
   }
-  return -1;
+  return -1;  // 没有找到重叠的VMA
 }
 
+/*
+ * 查找大于等于指定地址的下一个VMA起始地址
+ * 
+ * 参数：
+ *   p - 进程指针
+ *   x - 基准地址
+ * 
+ * 返回值：
+ *   大于等于x的最小VMA起始地址；如果没有则返回(uint64)-1
+ * 
+ * 用途：
+ *   在munmap等操作中用于跳过空闲区域，提高处理效率
+ */
 static uint64
 vma_next_start(struct proc *p, uint64 x)
 {
@@ -208,6 +307,20 @@ vma_next_start(struct proc *p, uint64 x)
   }
   return best;
 }
+/*
+ * 检查进程是否有指定key的共享内存VMA
+ * 
+ * 参数：
+ *   p    - 进程指针
+ *   key  - 共享内存键值
+ *   skip - 要跳过检查的VMA（用于删除操作时避免自己检查自己）
+ * 
+ * 返回值：
+ *   1表示存在匹配的共享内存VMA，0表示不存在
+ * 
+ * 用途：
+ *   用于判断进程是否还有其他VMA引用同一个共享内存对象
+ */
 static int
 proc_has_shm_key(struct proc *p, int key, struct vma *skip)
 {
@@ -307,6 +420,22 @@ bad:
 
 
 
+/*
+ * 删除或重置VMA结构
+ * 
+ * 参数：
+ *   p - 进程指针
+ *   v - 要删除的VMA指针
+ * 
+ * 操作：
+ *   1. 如果VMA未使用，直接返回
+ *   2. 如果是共享内存VMA，检查是否还有其他VMA引用同一共享内存对象
+ *   3. 如果没有其他引用，调用shm_put释放共享内存
+ *   4. 重置VMA的所有字段为初始状态
+ * 
+ * 注意：
+ *   该函数只删除VMA结构，不会释放对应的物理内存或页表项
+ */
 static void
 vma_delete(struct proc *p, struct vma *v)
 {
@@ -314,15 +443,13 @@ vma_delete(struct proc *p, struct vma *v)
 
   if(v->is_shm){
     int key = v->shm_key;
-    // printf("vma_delete: key=%d last=%d\n",
-    //    key, !proc_has_shm_key(p, key, v));
-
-    // 只有当“删掉 v 之后进程里不再有该 key 的 VMA”，才 shm_put
+    // 检查是否还有其他VMA引用同一个共享内存对象
     if(!proc_has_shm_key(p, key, v)){
-      shm_put(key);
+      shm_put(key);  // 没有其他引用，释放共享内存
     }
   }
 
+  // 重置VMA字段为初始状态
   v->used = 0;
   v->start = v->end = 0;
   v->prot = v->flags = 0;

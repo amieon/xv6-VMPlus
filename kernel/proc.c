@@ -26,9 +26,16 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
-// Allocate a page for each process's kernel stack.
-// Map it high in memory, followed by an invalid
-// guard page.
+/*
+ * 为每个进程分配内核栈页面
+ * 
+ * 功能：
+ * 1. 为系统中所有进程分配一个物理页面作为内核栈
+ * 2. 将内核栈映射到高内存地址，紧接着是一个无效的保护页面
+ * 
+ * 参数：
+ *   kpgtbl - 内核页表
+ */
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
@@ -43,7 +50,14 @@ proc_mapstacks(pagetable_t kpgtbl)
   }
 }
 
-// initialize the proc table.
+/*
+ * 初始化进程表
+ * 
+ * 功能：
+ * 1. 初始化进程ID锁和等待锁
+ * 2. 为每个进程分配锁并初始化状态为UNUSED
+ * 3. 设置每个进程的内核栈地址
+ */
 void
 procinit(void)
 {
@@ -58,9 +72,16 @@ procinit(void)
   }
 }
 
-// Must be called with interrupts disabled,
-// to prevent race with process being moved
-// to a different CPU.
+/*
+ * 获取当前CPU的ID
+ * 
+ * 注意：
+ * - 必须在禁用中断的情况下调用
+ * - 防止进程在不同CPU之间迁移时产生竞态条件
+ * 
+ * 返回值：
+ *   当前CPU的ID
+ */
 int
 cpuid()
 {
@@ -68,8 +89,15 @@ cpuid()
   return id;
 }
 
-// Return this CPU's cpu struct.
-// Interrupts must be disabled.
+/*
+ * 获取当前CPU的cpu结构体
+ * 
+ * 注意：
+ * - 必须在禁用中断的情况下调用
+ * 
+ * 返回值：
+ *   当前CPU的cpu结构体指针
+ */
 struct cpu*
 mycpu(void)
 {
@@ -78,7 +106,17 @@ mycpu(void)
   return c;
 }
 
-// Return the current struct proc *, or zero if none.
+/*
+ * 获取当前正在运行的进程的proc结构体
+ * 
+ * 功能：
+ * 1. 禁用中断防止进程切换
+ * 2. 获取当前CPU的cpu结构体
+ * 3. 返回当前CPU上运行的进程的proc结构体
+ * 
+ * 返回值：
+ *   当前进程的proc结构体指针，如果没有则返回0
+ */
 struct proc*
 myproc(void)
 {

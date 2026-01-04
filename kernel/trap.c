@@ -30,9 +30,17 @@ trapinithart(void)
 }
 
 //
-// handle an interrupt, exception, or system call from user space.
-// called from, and returns to, trampoline.S
-// return value is user satp for trampoline.S to switch to.
+// 处理来自用户空间的中断、异常或系统调用
+//
+// 该函数是用户空间到内核空间的入口点，负责以下主要功能：
+// 1. 处理系统调用 (scause == 8)
+// 2. 处理设备中断 (通过 devintr() 函数)
+// 3. 处理缺页异常 (scause == 13 读缺页, scause == 15 写缺页)
+// 4. 处理其他异常
+//
+// 调用流程：
+// - 从 trampoline.S 调用
+// - 处理完成后返回 user satp 值给 trampoline.S，用于切换回用户页表
 //
 uint64
 usertrap(void)
@@ -71,17 +79,32 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else if(sc == 13 || sc == 15) {
+    // 统一处理缺页异常
+    // sc == 13: 读缺页异常 (Load Page Fault)
+    // sc == 15: 写缺页异常 (Store/AMO Page Fault)
+    // va: 引发缺页异常的虚拟地址
+    
     if(sc == 15){
+      // 写缺页异常处理流程
+      // 1. 首先尝试 COW 页面处理：只有写操作才会触发 COW
       if(cowbreak(p->pagetable, va) == 0) {
+        // COW 页面处理成功
       } else if(vmafault(p, va, 1) != 0) {
+        // 2. COW 失败，尝试 VMA 区域的写异常处理（如 mmap 映射区域）
       } else if(vmfault(p->pagetable, va, 0) != 0) {
+        // 3. VMA 处理失败，尝试堆区域的惰性分配
       } else {
+        // 所有处理都失败，标记进程为可终止
         setkilled(p);
       }
     } else { 
+      // 读缺页异常处理流程
+      // 1. 首先尝试 VMA 区域的读异常处理（如 mmap 映射区域）
       if(vmafault(p, va, 0) != 0) {
       } else if(vmfault(p->pagetable, va, 1) != 0) {
+        // 2. VMA 处理失败，尝试堆区域的惰性分配
       } else {
+        // 所有处理都失败，标记进程为可终止
         setkilled(p);
       }
     }

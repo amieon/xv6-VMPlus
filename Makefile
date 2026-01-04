@@ -170,6 +170,7 @@ UPROGS=\
 	$U/_shm_rmid\
 	$U/_shm_sem_pc\
 	$U/_ipc_bench\
+	$U/_fork_cow_test\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

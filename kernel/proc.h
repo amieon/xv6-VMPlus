@@ -81,14 +81,20 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+/*
+ * 虚拟内存区域(VMA)结构，用于跟踪进程的内存映射
+ * 
+ * VMA是内存管理的核心结构，每个VMA代表进程地址空间中的一段连续虚拟内存
+ * 区域，包含了该区域的起始地址、结束地址、保护权限和映射标志等信息。
+ */
 struct vma {
-  int used;
-  uint64 start;
-  uint64 end;   // [start, end)
-  int prot;
-  int flags;
-  int is_shm;    
-  int shm_key;    // 共享 key
+  int used;          // 标识VMA是否被使用 (1: 使用中, 0: 空闲)
+  uint64 start;      // 虚拟内存起始地址（含）
+  uint64 end;        // 虚拟内存结束地址（不含），即[start, end)区间
+  int prot;          // 内存保护权限（PROT_READ, PROT_WRITE等）
+  int flags;         // 映射标志（MAP_SHARED, MAP_ANON等）
+  int is_shm;        // 是否为共享内存映射 (1: 共享内存, 0: 普通映射)
+  int shm_key;       // 共享内存键值，用于标识共享内存对象
 };
 
 // Per-process state

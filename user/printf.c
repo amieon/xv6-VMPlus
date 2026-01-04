@@ -1,16 +1,63 @@
+/*
+ * printf.c - 格式化输出函数实现
+ * 
+ * 该文件实现了格式化输出功能，支持以下格式说明符：
+ * - %d - 十进制整数
+ * - %x - 十六进制整数
+ * - %p - 指针地址
+ * - %c - 字符
+ * - %s - 字符串
+ * - %% - 百分号本身
+ * 
+ * 同时支持长整数格式：
+ * - %ld, %lu, %lx - long类型
+ * - %lld, %llu, %llx - long long类型
+ * 
+ * 这些函数为用户程序提供了灵活的输出方式，是操作系统用户空间的基础库函数之一。
+ */
+
 #include "kernel/types.h"
 #include "kernel/stat.h"
 #include "user/user.h"
 
 #include <stdarg.h>
 
+/* 用于数字转换的字符数组 */
 static char digits[] = "0123456789ABCDEF";
+
+/*
+ * putc - 输出单个字符
+ * 
+ * 将单个字符写入到指定的文件描述符
+ * 
+ * 参数：
+ *   fd - 文件描述符
+ *   c - 要输出的字符
+ * 
+ * 返回值：
+ *   无
+ */
 
 static void
 putc(int fd, char c)
 {
   write(fd, &c, 1);
 }
+
+/*
+ * printint - 输出整数
+ * 
+ * 将整数以指定进制和符号格式输出到文件描述符
+ * 
+ * 参数：
+ *   fd - 文件描述符
+ *   xx - 要输出的整数
+ *   base - 输出进制（2-16）
+ *   sgn - 是否为有符号整数
+ * 
+ * 返回值：
+ *   无
+ */
 
 static void
 printint(int fd, long long xx, int base, int sgn)
@@ -38,6 +85,19 @@ printint(int fd, long long xx, int base, int sgn)
     putc(fd, buf[i]);
 }
 
+/*
+ * printptr - 输出指针地址
+ * 
+ * 将指针地址以十六进制格式输出到文件描述符
+ * 
+ * 参数：
+ *   fd - 文件描述符
+ *   x - 要输出的指针地址
+ * 
+ * 返回值：
+ *   无
+ */
+
 static void
 printptr(int fd, uint64 x) {
   int i;
@@ -47,7 +107,20 @@ printptr(int fd, uint64 x) {
     putc(fd, digits[x >> (sizeof(uint64) * 8 - 4)]);
 }
 
-// Print to the given fd. Only understands %d, %x, %p, %c, %s.
+/*
+ * vprintf - 可变参数格式化输出
+ * 
+ * 核心格式化输出函数，解析格式字符串并输出对应内容
+ * 
+ * 参数：
+ *   fd - 文件描述符
+ *   fmt - 格式字符串
+ *   ap - 可变参数列表
+ * 
+ * 返回值：
+ *   无
+ */
+
 void
 vprintf(int fd, const char *fmt, va_list ap)
 {
@@ -103,7 +176,7 @@ vprintf(int fd, const char *fmt, va_list ap)
       } else if(c0 == '%'){
         putc(fd, '%');
       } else {
-        // Unknown % sequence.  Print it to draw attention.
+        // 未知的%序列，原样输出以引起注意
         putc(fd, '%');
         putc(fd, c0);
       }
@@ -113,6 +186,20 @@ vprintf(int fd, const char *fmt, va_list ap)
   }
 }
 
+/*
+ * fprintf - 输出到文件的格式化函数
+ * 
+ * 将格式化输出写入到指定文件描述符
+ * 
+ * 参数：
+ *   fd - 文件描述符
+ *   fmt - 格式字符串
+ *   ... - 可变参数列表
+ * 
+ * 返回值：
+ *   无
+ */
+
 void
 fprintf(int fd, const char *fmt, ...)
 {
@@ -121,6 +208,19 @@ fprintf(int fd, const char *fmt, ...)
   va_start(ap, fmt);
   vprintf(fd, fmt, ap);
 }
+
+/*
+ * printf - 标准输出的格式化函数
+ * 
+ * 将格式化输出写入到标准输出（文件描述符1）
+ * 
+ * 参数：
+ *   fmt - 格式字符串
+ *   ... - 可变参数列表
+ * 
+ * 返回值：
+ *   无
+ */
 
 void
 printf(const char *fmt, ...)

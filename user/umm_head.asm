@@ -105,8 +105,8 @@ main(void)
   c2:	298000ef          	jal	ra,35a <exit>
 
 00000000000000c6 <start>:
-// wrapper so that it's OK if main() does not call exit().
-//
+ *   argv - 命令行参数数组
+ */
 
 void
 start(int argc, char **argv)
@@ -123,7 +123,8 @@ start(int argc, char **argv)
   d2:	288000ef          	jal	ra,35a <exit>
 
 00000000000000d6 <strcpy>:
-}
+ *   目标字符串s的指针
+ */
 
 char*
 strcpy(char *s, const char *t)
@@ -149,6 +150,8 @@ strcpy(char *s, const char *t)
   f0:	8082                	ret
 
 00000000000000f2 <strcmp>:
+ *   负数 - p小于q
+ */
 
 int
 strcmp(const char *p, const char *q)
@@ -176,6 +179,8 @@ strcmp(const char *p, const char *q)
  11c:	8082                	ret
 
 000000000000011e <strlen>:
+ *   字符串s的长度
+ */
 
 uint
 strlen(const char *s)
@@ -207,6 +212,8 @@ strlen(const char *s)
  146:	bfe5                	j	13e <strlen+0x20>
 
 0000000000000148 <memset>:
+ *   目标内存区域dst的指针
+ */
 
 void*
 memset(void *dst, int c, uint n)
@@ -235,6 +242,8 @@ memset(void *dst, int c, uint n)
  168:	8082                	ret
 
 000000000000016a <strchr>:
+ *   指向找到的字符的指针，如果未找到则返回NULL
+ */
 
 char*
 strchr(const char *s, char c)
@@ -263,6 +272,8 @@ strchr(const char *s, char c)
  18c:	bfe5                	j	184 <strchr+0x1a>
 
 000000000000018e <gets>:
+ *   指向缓冲区buf的指针，如果读取失败则返回NULL
+ */
 
 char*
 gets(char *buf, int max)
@@ -336,6 +347,8 @@ gets(char *buf, int max)
  1fc:	8082                	ret
 
 00000000000001fe <stat>:
+ *   -1 - 失败
+ */
 
 int
 stat(const char *n, struct stat *st)
@@ -378,6 +391,8 @@ stat(const char *n, struct stat *st)
  236:	bfc5                	j	226 <stat+0x28>
 
 0000000000000238 <atoi>:
+ *   转换后的整数
+ */
 
 int
 atoi(const char *s)
@@ -419,6 +434,8 @@ atoi(const char *s)
  27e:	bfe5                	j	276 <atoi+0x3e>
 
 0000000000000280 <memmove>:
+ *   目标内存区域vdst的指针
+ */
 
 void*
 memmove(void *vdst, const void *vsrc, int n)
@@ -477,6 +494,8 @@ memmove(void *vdst, const void *vsrc, int n)
  2d6:	bfc9                	j	2a8 <memmove+0x28>
 
 00000000000002d8 <memcmp>:
+ *   负数 - s1小于s2
+ */
 
 int
 memcmp(const void *s1, const void *s2, uint n)
@@ -519,6 +538,8 @@ memcmp(const void *s1, const void *s2, uint n)
  310:	bfe5                	j	308 <memcmp+0x30>
 
 0000000000000312 <memcpy>:
+ *   目标内存区域dst的指针
+ */
 
 void *
 memcpy(void *dst, const void *src, uint n)
@@ -536,6 +557,9 @@ memcpy(void *dst, const void *src, uint n)
  324:	8082                	ret
 
 0000000000000326 <sbrk>:
+ * 返回值：
+ *   指向新分配内存的指针
+ */
 
 char *
 sbrk(int n) {
@@ -553,6 +577,9 @@ sbrk(int n) {
  33a:	8082                	ret
 
 000000000000033c <sbrklazy>:
+ * 返回值：
+ *   指向新分配内存的指针
+ */
 
 char *
 sbrklazy(int n) {
@@ -862,8 +889,8 @@ vmstats:
  438:	8082                	ret
 
 000000000000043a <putc>:
-
-static char digits[] = "0123456789ABCDEF";
+ *   无
+ */
 
 static void
 putc(int fd, char c)
@@ -884,6 +911,8 @@ putc(int fd, char c)
  456:	8082                	ret
 
 0000000000000458 <printint>:
+ *   无
+ */
 
 static void
 printint(int fd, long long xx, int base, int sgn)
@@ -971,9 +1000,9 @@ printint(int fd, long long xx, int base, int sgn)
  4f2:	bfbd                	j	470 <printint+0x18>
 
 00000000000004f4 <vprintf>:
-}
+ *   无
+ */
 
-// Print to the given fd. Only understands %d, %x, %p, %c, %s.
 void
 vprintf(int fd, const char *fmt, va_list ap)
 {
@@ -1105,7 +1134,7 @@ vprintf(int fd, const char *fmt, va_list ap)
  5b2:	85d6                	mv	a1,s5
  5b4:	855a                	mv	a0,s6
  5b6:	e85ff0ef          	jal	ra,43a <putc>
-        // Unknown % sequence.  Print it to draw attention.
+        // 未知的%序列，原样输出以引起注意
         putc(fd, '%');
         putc(fd, c0);
       }
@@ -1352,6 +1381,8 @@ vprintf(int fd, const char *fmt, va_list ap)
  78a:	8082                	ret
 
 000000000000078c <fprintf>:
+ *   无
+ */
 
 void
 fprintf(int fd, const char *fmt, ...)
@@ -1380,6 +1411,8 @@ fprintf(int fd, const char *fmt, ...)
  7b4:	8082                	ret
 
 00000000000007b6 <printf>:
+ *   无
+ */
 
 void
 printf(const char *fmt, ...)
@@ -1411,8 +1444,8 @@ printf(const char *fmt, ...)
  7e6:	8082                	ret
 
 00000000000007e8 <free>:
-static Header base;
-static Header *freep;
+ *   无
+ */
 
 void
 free(void *ap)
@@ -1422,14 +1455,16 @@ free(void *ap)
  7ec:	0800                	addi	s0,sp,16
   Header *bp, *p;
 
-  bp = (Header*)ap - 1;
+  bp = (Header*)ap - 1;  /* 获取内存块头部 */
  7ee:	ff050693          	addi	a3,a0,-16
+  /* 查找合适的位置插入空闲块 */
   for(p = freep; !(bp > p && bp < p->s.ptr); p = p->s.ptr)
  7f2:	00001797          	auipc	a5,0x1
  7f6:	80e7b783          	ld	a5,-2034(a5) # 1000 <freep>
  7fa:	a02d                	j	824 <free+0x3c>
     if(p >= p->s.ptr && (bp > p || bp < p->s.ptr))
       break;
+  /* 检查是否可以与下一个块合并 */
   if(bp + bp->s.size == p->s.ptr){
     bp->s.size += p->s.ptr->s.size;
  7fc:	4618                	lw	a4,8(a2)
@@ -1441,6 +1476,7 @@ free(void *ap)
  808:	a83d                	j	846 <free+0x5e>
   } else
     bp->s.ptr = p->s.ptr;
+  /* 检查是否可以与前一个块合并 */
   if(p + p->s.size == bp){
     p->s.size += bp->s.size;
  80a:	ff852703          	lw	a4,-8(a0)
@@ -1480,6 +1516,7 @@ free(void *ap)
  85a:	e394                	sd	a3,0(a5)
   } else
     p->s.ptr = bp;
+  /* 更新空闲链表头指针 */
   freep = p;
  85c:	00000717          	auipc	a4,0x0
  860:	7af73223          	sd	a5,1956(a4) # 1000 <freep>
@@ -1489,8 +1526,8 @@ free(void *ap)
  868:	8082                	ret
 
 000000000000086a <malloc>:
-  return freep;
-}
+ *   指向分配的内存块的指针，失败则返回0
+ */
 
 void*
 malloc(uint nbytes)
@@ -1508,6 +1545,7 @@ malloc(uint nbytes)
   Header *p, *prevp;
   uint nunits;
 
+  /* 计算需要的头部数量 */
   nunits = (nbytes + sizeof(Header) - 1)/sizeof(Header) + 1;
  87e:	02051493          	slli	s1,a0,0x20
  882:	9081                	srli	s1,s1,0x20
@@ -1515,6 +1553,7 @@ malloc(uint nbytes)
  886:	8091                	srli	s1,s1,0x4
  888:	0014899b          	addiw	s3,s1,1
  88c:	0485                	addi	s1,s1,1
+  /* 如果空闲链表为空，初始化链表 */
   if((prevp = freep) == 0){
  88e:	00000517          	auipc	a0,0x0
  892:	77253503          	ld	a0,1906(a0) # 1000 <freep>
@@ -1522,9 +1561,10 @@ malloc(uint nbytes)
     base.s.ptr = freep = prevp = &base;
     base.s.size = 0;
   }
+  /* 遍历空闲链表寻找合适的块 */
   for(p = prevp->s.ptr; ; prevp = p, p = p->s.ptr){
  898:	611c                	ld	a5,0(a0)
-    if(p->s.size >= nunits){
+    if(p->s.size >= nunits){  /* 找到足够大的块 */
  89a:	4798                	lw	a4,8(a5)
  89c:	02977f63          	bgeu	a4,s1,8da <malloc+0x70>
  8a0:	8a4e                	mv	s4,s3
@@ -1533,17 +1573,17 @@ malloc(uint nbytes)
  8a8:	00d77363          	bgeu	a4,a3,8ae <malloc+0x44>
  8ac:	6a05                	lui	s4,0x1
  8ae:	000a0b1b          	sext.w	s6,s4
-  p = sbrk(nu * sizeof(Header));
+  p = sbrk(nu * sizeof(Header));  /* 调用sbrk扩展堆 */
  8b2:	004a1a1b          	slliw	s4,s4,0x4
-        p->s.size = nunits;
       }
-      freep = prevp;
-      return (void*)(p + 1);
+      freep = prevp;  /* 更新空闲链表头指针 */
+      return (void*)(p + 1);  /* 返回实际数据区域的指针 */
     }
+    /* 如果遍历完整个链表都没有找到合适的块，请求更多内存 */
     if(p == freep)
  8b6:	00000917          	auipc	s2,0x0
  8ba:	74a90913          	addi	s2,s2,1866 # 1000 <freep>
-  if(p == SBRK_ERROR)
+  if(p == SBRK_ERROR)  /* 检查是否分配失败 */
  8be:	5afd                	li	s5,-1
  8c0:	a885                	j	930 <malloc+0xc6>
     base.s.ptr = freep = prevp = &base;
@@ -1554,9 +1594,9 @@ malloc(uint nbytes)
  8d2:	e39c                	sd	a5,0(a5)
     base.s.size = 0;
  8d4:	0007a423          	sw	zero,8(a5)
-    if(p->s.size >= nunits){
+    if(p->s.size >= nunits){  /* 找到足够大的块 */
  8d8:	b7e1                	j	8a0 <malloc+0x36>
-      if(p->s.size == nunits)
+      if(p->s.size == nunits)  /* 块大小正好匹配 */
  8da:	02e48c63          	beq	s1,a4,912 <malloc+0xa8>
         p->s.size -= nunits;
  8de:	4137073b          	subw	a4,a4,s3
@@ -1567,13 +1607,13 @@ malloc(uint nbytes)
  8ec:	97ba                	add	a5,a5,a4
         p->s.size = nunits;
  8ee:	0137a423          	sw	s3,8(a5)
-      freep = prevp;
+      freep = prevp;  /* 更新空闲链表头指针 */
  8f2:	00000717          	auipc	a4,0x0
  8f6:	70a73723          	sd	a0,1806(a4) # 1000 <freep>
-      return (void*)(p + 1);
+      return (void*)(p + 1);  /* 返回实际数据区域的指针 */
  8fa:	01078513          	addi	a0,a5,16
       if((p = morecore(nunits)) == 0)
-        return 0;
+        return 0;  /* 内存分配失败 */
   }
 }
  8fe:	70e2                	ld	ra,56(sp)
@@ -1592,7 +1632,7 @@ malloc(uint nbytes)
  916:	bff1                	j	8f2 <malloc+0x88>
   hp->s.size = nu;
  918:	01652423          	sw	s6,8(a0)
-  free((void*)(hp + 1));
+  free((void*)(hp + 1));  /* 将新分配的内存加入空闲链表 */
  91c:	0541                	addi	a0,a0,16
  91e:	ecbff0ef          	jal	ra,7e8 <free>
   return freep;
@@ -1601,18 +1641,18 @@ malloc(uint nbytes)
  926:	dd61                	beqz	a0,8fe <malloc+0x94>
   for(p = prevp->s.ptr; ; prevp = p, p = p->s.ptr){
  928:	611c                	ld	a5,0(a0)
-    if(p->s.size >= nunits){
+    if(p->s.size >= nunits){  /* 找到足够大的块 */
  92a:	4798                	lw	a4,8(a5)
  92c:	fa9777e3          	bgeu	a4,s1,8da <malloc+0x70>
     if(p == freep)
  930:	00093703          	ld	a4,0(s2)
  934:	853e                	mv	a0,a5
  936:	fef719e3          	bne	a4,a5,928 <malloc+0xbe>
-  p = sbrk(nu * sizeof(Header));
+  p = sbrk(nu * sizeof(Header));  /* 调用sbrk扩展堆 */
  93a:	8552                	mv	a0,s4
  93c:	9ebff0ef          	jal	ra,326 <sbrk>
-  if(p == SBRK_ERROR)
+  if(p == SBRK_ERROR)  /* 检查是否分配失败 */
  940:	fd551ce3          	bne	a0,s5,918 <malloc+0xae>
-        return 0;
+        return 0;  /* 内存分配失败 */
  944:	4501                	li	a0,0
  946:	bf65                	j	8fe <malloc+0x94>

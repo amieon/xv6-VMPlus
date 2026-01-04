@@ -1408,10 +1408,10 @@ uartintr(void)
     800009b6:	8082                	ret
 
 00000000800009b8 <kref_get>:
-} kref;
-
-//这三个函数作用差不多
-//先加锁，在操作，最后释放锁再返回现在的引用数
+ * 注意：
+ *   - 此函数需要通过PA2IDX将物理地址转换为引用计数数组的索引
+ *   - 操作过程中会获取kref锁以保证线程安全
+ */
 int     
 kref_get(void *pa){
     800009b8:	1101                	addi	sp,sp,-32
@@ -1445,6 +1445,10 @@ kref_get(void *pa){
     800009f0:	8082                	ret
 
 00000000800009f2 <kref_inc>:
+ *   - 当物理页被多个进程共享时（如COW机制）
+ *   - 当物理页被共享内存对象引用时
+ *   - 任何需要延长物理页生命周期的场景
+ */
 int             
 kref_inc(void *pa){
     800009f2:	1101                	addi	sp,sp,-32
@@ -1481,6 +1485,10 @@ kref_inc(void *pa){
     80000a34:	8082                	ret
 
 0000000080000a36 <kref_dec>:
+ * 注意：
+ *   - 当引用计数减为0时，调用者应负责释放该物理页
+ *   - 操作过程中会获取kref锁以保证线程安全
+ */
 int            
 kref_dec(void *pa){
     80000a36:	1101                	addi	sp,sp,-32
@@ -1541,10 +1549,12 @@ kfree(void *pa)
     80000a9a:	47c5                	li	a5,17
     80000a9c:	07ee                	slli	a5,a5,0x1b
     80000a9e:	00f57c63          	bgeu	a0,a5,80000ab6 <kfree+0x3c>
-    panic("kfree");
-  //如果某个进程将这个页free后引用数不为0
-  //那么说明有其他进程要用到这个页，故不真正将其free了
-  if(kref_dec(pa)>0)
+   * 检查引用计数，决定是否真正释放物理页
+   * 
+   * 如果减少引用计数后仍大于0，说明还有其他进程或组件在使用该页
+   * 此时不释放物理页，直接返回
+   */
+  if(kref_dec(pa) > 0)
     80000aa2:	f95ff0ef          	jal	ra,80000a36 <kref_dec>
     80000aa6:	00a05e63          	blez	a0,80000ac2 <kfree+0x48>
 
@@ -1712,14 +1722,16 @@ kalloc(void)
     80000bd8:	4595                	li	a1,5
     80000bda:	8526                	mv	a0,s1
     80000bdc:	1a6000ef          	jal	ra,80000d82 <memset>
-  
-  //alloc出页后，默认引用数为1
+   * 初始化新分配页的引用计数
+   * 
+   * 新分配的物理页默认引用计数为1，表示被当前调用者拥有
+   */
   if(r){
-  acquire(&kref.lock);
+    acquire(&kref.lock);
     80000be0:	00010517          	auipc	a0,0x10
     80000be4:	e2850513          	addi	a0,a0,-472 # 80010a08 <kref>
     80000be8:	0c6000ef          	jal	ra,80000cae <acquire>
-  kref.refcnt[PA2IDX(r)] = 1;
+    kref.refcnt[PA2IDX(r)] = 1;
     80000bec:	00010517          	auipc	a0,0x10
     80000bf0:	e1c50513          	addi	a0,a0,-484 # 80010a08 <kref>
     80000bf4:	00c4d793          	srli	a5,s1,0xc
@@ -1728,7 +1740,7 @@ kalloc(void)
     80000bfc:	97aa                	add	a5,a5,a0
     80000bfe:	4705                	li	a4,1
     80000c00:	c798                	sw	a4,8(a5)
-  release(&kref.lock);
+    release(&kref.lock);
     80000c02:	144000ef          	jal	ra,80000d46 <release>
   }
   extern uint64 kalloc_cnt;
@@ -2278,9 +2290,9 @@ strlen(const char *s)
     80000f22:	bfe5                	j	80000f1a <strlen+0x20>
 
 0000000080000f24 <main>:
-volatile static int started = 0;
-
-// start() jumps here in supervisor mode on all CPUs.
+ * - 其他CPU等待初始化完成后启动
+ * - 所有CPU最终都进入调度器
+ */
 void
 main()
 {
@@ -3162,10 +3174,10 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   for(i = 0; i < sz; i += PGSIZE){
     800014b8:	4901                	li	s2,0
     if(flags & PTE_W){
-      // 子进程和父进程映射要只读 + COW
+      // 子进程和父进程的映射都设置为只读 + COW 标志
       flags = (flags & ~PTE_W) | PTE_COW;
 
-      // 父进程也要
+      // 更新父进程的页表项
       *pte = PA2PTE(pa) | flags | PTE_V;
     800014ba:	7b7d                	lui	s6,0xfffff
     800014bc:	002b5b13          	srli	s6,s6,0x2
@@ -3175,11 +3187,12 @@ uvmfree(pagetable_t pagetable, uint64 sz)
     800014c4:	00c69493          	slli	s1,a3,0xc
     }
 
-    // 共享同一物理页：引用计数 +1
+    // 共享同一物理页：增加物理页的引用计数
     kref_inc((void*)pa);
     800014c8:	8526                	mv	a0,s1
     800014ca:	d28ff0ef          	jal	ra,800009f2 <kref_inc>
 
+    // 在子进程中建立映射
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
     800014ce:	875e                	mv	a4,s7
     800014d0:	86a6                	mv	a3,s1
@@ -3223,7 +3236,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
     8000151e:	1017e793          	ori	a5,a5,257
     80001522:	e11c                	sd	a5,0(a0)
     80001524:	bf79                	j	800014c2 <uvmcopy+0x28>
-      // map 失败要回滚 refcnt
+      // 映射失败，回滚引用计数
       kref_dec((void*)pa);
     80001526:	8526                	mv	a0,s1
     80001528:	d0eff0ef          	jal	ra,80000a36 <kref_dec>
@@ -3231,7 +3244,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 
 err:
   // 回收子进程已经建立的映射：
-  // do_free=1 会对每个 pa 调 kfree()， kfree 再对 refcnt--。
+  // do_free=1 会对每个 pa 调用 kfree()，kfree 会自动减少引用计数
   uvmunmap(new, 0, i / PGSIZE, 1);
     8000152c:	4685                	li	a3,1
     8000152e:	00c95613          	srli	a2,s2,0xc
@@ -3261,6 +3274,9 @@ err:
     80001558:	8082                	ret
 
 000000008000155a <cowbreak>:
+ *   - 该函数会在页表更新后刷新 TLB，确保更改立即生效
+ *   - 当需要复制页面时，会更新 COW 统计信息
+ */
 int
 cowbreak(pagetable_t pagetable, uint64 va)
 {
@@ -3282,15 +3298,15 @@ cowbreak(pagetable_t pagetable, uint64 va)
   if(pte == 0)
     80001574:	cd51                	beqz	a0,80001610 <cowbreak+0xb6>
     80001576:	89aa                	mv	s3,a0
-    return -1;
+    return -1;                 // 页表项不存在
   if((*pte & PTE_V) == 0)
     80001578:	6104                	ld	s1,0(a0)
-    return -1;
+    return -1;                 // 虚拟地址未映射到物理页
   if((*pte & PTE_U) == 0)
     8000157a:	0114f713          	andi	a4,s1,17
     8000157e:	47c5                	li	a5,17
     80001580:	08f71a63          	bne	a4,a5,80001614 <cowbreak+0xba>
-    return -1;
+    return -1;                 // 非用户页
 
   // 必须是 COW 且当前不可写
   if(((*pte & PTE_COW) == 0) || ((*pte & PTE_W) != 0))
@@ -3312,18 +3328,19 @@ cowbreak(pagetable_t pagetable, uint64 va)
     8000159c:	c1cff0ef          	jal	ra,800009b8 <kref_get>
     800015a0:	4785                	li	a5,1
     800015a2:	04f50663          	beq	a0,a5,800015ee <cowbreak+0x94>
-    *pte = PA2PTE(pa_old) | ((flags | PTE_W) & ~PTE_COW) | PTE_V;
-    sfence_vma();
+    sfence_vma();              // 刷新 TLB
     return 0;
   }
 
+  // 分配新物理页
   char *mem = kalloc();
     800015a6:	e04ff0ef          	jal	ra,80000baa <kalloc>
     800015aa:	84aa                	mv	s1,a0
   if(mem == 0)
     800015ac:	c925                	beqz	a0,8000161c <cowbreak+0xc2>
-    return -1;
+    return -1;                 // 内存分配失败
 
+  // 复制旧页内容到新页
   memmove(mem, (void*)pa_old, PGSIZE);
     800015ae:	6605                	lui	a2,0x1
     800015b0:	85d2                	mv	a1,s4
@@ -3334,7 +3351,7 @@ cowbreak(pagetable_t pagetable, uint64 va)
     800015b6:	8552                	mv	a0,s4
     800015b8:	c7eff0ef          	jal	ra,80000a36 <kref_dec>
 
-  // 更新 PTE：指向新页，变可写，清掉 COW
+  // 更新 PTE：指向新页，变可写，清掉 COW 标志
   *pte = PA2PTE((uint64)mem) | ((flags | PTE_W) & ~PTE_COW) | PTE_V;
     800015bc:	80b1                	srli	s1,s1,0xc
     800015be:	04aa                	slli	s1,s1,0xa
@@ -3345,8 +3362,8 @@ cowbreak(pagetable_t pagetable, uint64 va)
     800015d0:	0099b023          	sd	s1,0(s3)
     800015d4:	12000073          	sfence.vma
 
-  sfence_vma();
-  vmstats_inc_cow();
+  sfence_vma();                // 刷新 TLB
+  vmstats_inc_cow();           // 更新 COW 统计信息
     800015d8:	77a050ef          	jal	ra,80006d52 <vmstats_inc_cow>
 
   return 0;
@@ -3373,16 +3390,16 @@ cowbreak(pagetable_t pagetable, uint64 va)
     return 0;
     8000160c:	4501                	li	a0,0
     8000160e:	bfc1                	j	800015de <cowbreak+0x84>
-    return -1;
+    return -1;                 // 页表项不存在
     80001610:	557d                	li	a0,-1
     80001612:	b7f1                	j	800015de <cowbreak+0x84>
-    return -1;
+    return -1;                 // 非用户页
     80001614:	557d                	li	a0,-1
     80001616:	b7e1                	j	800015de <cowbreak+0x84>
     return -1;
     80001618:	557d                	li	a0,-1
     8000161a:	b7d1                	j	800015de <cowbreak+0x84>
-    return -1;
+    return -1;                 // 内存分配失败
     8000161c:	557d                	li	a0,-1
     8000161e:	b7c1                	j	800015de <cowbreak+0x84>
 
@@ -3541,9 +3558,9 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     800016f4:	8082                	ret
 
 00000000800016f6 <ismapped>:
-  return mem;
-}
-
+ *   - 仅检查映射存在性，不检查权限
+ *   - 用于 vmfault 和其他内存管理函数中的辅助检查
+ */
 int
 ismapped(pagetable_t pagetable, uint64 va)
 {
@@ -3554,7 +3571,7 @@ ismapped(pagetable_t pagetable, uint64 va)
   pte_t *pte = walk(pagetable, va, 0);
     800016fe:	4601                	li	a2,0
     80001700:	90bff0ef          	jal	ra,8000100a <walk>
-  if (pte == 0) {
+  if (pte == 0) {               // 页表项不存在
     80001704:	c519                	beqz	a0,80001712 <ismapped+0x1c>
     return 0;
   }
@@ -3562,9 +3579,9 @@ ismapped(pagetable_t pagetable, uint64 va)
     80001706:	6108                	ld	a0,0(a0)
     return 0;
     80001708:	8905                	andi	a0,a0,1
-    return 1;
+    return 1;                   // 页表项存在且有效
   }
-  return 0;
+  return 0;                     // 页表项存在但无效
 }
     8000170a:	60a2                	ld	ra,8(sp)
     8000170c:	6402                	ld	s0,0(sp)
@@ -3588,7 +3605,7 @@ ismapped(pagetable_t pagetable, uint64 va)
     80001728:	84ae                	mv	s1,a1
   struct proc *p = myproc();
     8000172a:	46e000ef          	jal	ra,80001b98 <myproc>
-  if (va >= p->sz)
+  if (va >= p->sz)              // 检查虚拟地址是否在进程地址空间范围内
     8000172e:	653c                	ld	a5,72(a0)
     80001730:	00f4ec63          	bltu	s1,a5,80001748 <vmfault+0x32>
     return 0;
@@ -3604,25 +3621,25 @@ ismapped(pagetable_t pagetable, uint64 va)
     80001744:	6145                	addi	sp,sp,48
     80001746:	8082                	ret
     80001748:	892a                	mv	s2,a0
-  va = PGROUNDDOWN(va);
+  va = PGROUNDDOWN(va);         // 向下对齐到页边界
     8000174a:	77fd                	lui	a5,0xfffff
     8000174c:	8cfd                	and	s1,s1,a5
-  if(ismapped(pagetable, va)) {
+  if(ismapped(pagetable, va)) { // 检查是否已映射
     8000174e:	85a6                	mv	a1,s1
     80001750:	854e                	mv	a0,s3
     80001752:	fa5ff0ef          	jal	ra,800016f6 <ismapped>
     return 0;
     80001756:	4981                	li	s3,0
-  if(ismapped(pagetable, va)) {
+  if(ismapped(pagetable, va)) { // 检查是否已映射
     80001758:	fd79                	bnez	a0,80001736 <vmfault+0x20>
-  mem = (uint64) kalloc();
+  mem = (uint64) kalloc();      // 分配新物理页
     8000175a:	c50ff0ef          	jal	ra,80000baa <kalloc>
     8000175e:	8a2a                	mv	s4,a0
   if(mem == 0)
     80001760:	d979                	beqz	a0,80001736 <vmfault+0x20>
-  mem = (uint64) kalloc();
+  mem = (uint64) kalloc();      // 分配新物理页
     80001762:	89aa                	mv	s3,a0
-  memset((void *) mem, 0, PGSIZE);
+  memset((void *) mem, 0, PGSIZE); // 初始化为0
     80001764:	6605                	lui	a2,0x1
     80001766:	4581                	li	a1,0
     80001768:	e1aff0ef          	jal	ra,80000d82 <memset>
@@ -3634,7 +3651,7 @@ ismapped(pagetable_t pagetable, uint64 va)
     80001774:	05093503          	ld	a0,80(s2) # 1050 <_entry-0x7fffefb0>
     80001778:	96bff0ef          	jal	ra,800010e2 <mappages>
     8000177c:	dd4d                	beqz	a0,80001736 <vmfault+0x20>
-    kfree((void *)mem);
+    kfree((void *)mem);         // 映射失败，释放物理页
     8000177e:	8552                	mv	a0,s4
     80001780:	afaff0ef          	jal	ra,80000a7a <kfree>
     return 0;
@@ -3878,8 +3895,9 @@ ismapped(pagetable_t pagetable, uint64 va)
     8000193a:	8082                	ret
 
 000000008000193c <vmafault>:
-
-
+ *   - 支持匿名映射和共享内存映射两种类型
+ *   - 失败时会自动回滚已分配的资源（如物理页）
+ */
 uint64
 vmafault(struct proc *p, uint64 va, int iswrite)
 {
@@ -3894,14 +3912,14 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     8000194c:	0080                	addi	s0,sp,64
     8000194e:	8a2a                	mv	s4,a0
     80001950:	8932                	mv	s2,a2
-  va = PGROUNDDOWN(va);
+  va = PGROUNDDOWN(va);         // 向下对齐到页边界
     80001952:	77fd                	lui	a5,0xfffff
     80001954:	00f5f9b3          	and	s3,a1,a5
 
-  struct vma *v = vma_find(p, va);
+  struct vma *v = vma_find(p, va); // 查找虚拟地址所属的 VMA
     80001958:	85ce                	mv	a1,s3
     8000195a:	74c010ef          	jal	ra,800030a6 <vma_find>
-  if(v == 0) return 0;
+  if(v == 0) return 0;          // 不在任何 VMA 范围内
     8000195e:	c961                	beqz	a0,80001a2e <vmafault+0xf2>
     80001960:	84aa                	mv	s1,a0
 
@@ -3914,18 +3932,18 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     8000196a:	4901                	li	s2,0
   if(iswrite && (v->prot & PROT_WRITE) == 0)
     8000196c:	c789                	beqz	a5,80001976 <vmafault+0x3a>
-  if((v->prot & PROT_READ) == 0)
+  if((v->prot & PROT_READ) == 0) // VMA 不允许读 -> 不处理
     8000196e:	4c9c                	lw	a5,24(s1)
     80001970:	8b85                	andi	a5,a5,1
     return 0;
     80001972:	4901                	li	s2,0
-  if((v->prot & PROT_READ) == 0)
+  if((v->prot & PROT_READ) == 0) // VMA 不允许读 -> 不处理
     80001974:	eb99                	bnez	a5,8000198a <vmafault+0x4e>
-    else kfree((void*)pa);
+    else kfree((void*)pa);            // 释放普通物理页
     return 0;
   }
-  vmstats_inc_lazy();
-  return (uint64)pa;
+  vmstats_inc_lazy();            // 更新惰性分配统计信息
+  return (uint64)pa;             // 返回物理页地址
 }
     80001976:	854a                	mv	a0,s2
     80001978:	70e2                	ld	ra,56(sp)
@@ -3942,7 +3960,7 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     8000198c:	85ce                	mv	a1,s3
     8000198e:	050a3503          	ld	a0,80(s4)
     80001992:	e78ff0ef          	jal	ra,8000100a <walk>
-  if(pte && (*pte & PTE_V)){
+  if(pte && (*pte & PTE_V)){     // 如果已经映射
     80001996:	c115                	beqz	a0,800019ba <vmafault+0x7e>
     80001998:	611c                	ld	a5,0(a0)
     8000199a:	0017f913          	andi	s2,a5,1
@@ -3957,47 +3975,47 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     800019ae:	0047e793          	ori	a5,a5,4
     800019b2:	e11c                	sd	a5,0(a0)
     800019b4:	12000073          	sfence.vma
-      return 1;
+      return 1;                  // 返回成功标志
     800019b8:	bf7d                	j	80001976 <vmafault+0x3a>
-  int idx = (va - v->start) / PGSIZE;
+  int idx = (va - v->start) / PGSIZE; // 计算页在 VMA 中的索引
     800019ba:	648c                	ld	a1,8(s1)
-  if(v->is_shm){
+  if(v->is_shm){                 // 共享内存 VMA
     800019bc:	509c                	lw	a5,32(s1)
     800019be:	cf89                	beqz	a5,800019d8 <vmafault+0x9c>
-  int idx = (va - v->start) / PGSIZE;
+  int idx = (va - v->start) / PGSIZE; // 计算页在 VMA 中的索引
     800019c0:	40b985b3          	sub	a1,s3,a1
     800019c4:	81b1                	srli	a1,a1,0xc
-    pa = shm_getpa(v->shm_key, idx);
+    pa = shm_getpa(v->shm_key, idx); // 从共享内存对象获取物理页
     800019c6:	2581                	sext.w	a1,a1
     800019c8:	50c8                	lw	a0,36(s1)
     800019ca:	625040ef          	jal	ra,800067ee <shm_getpa>
     800019ce:	892a                	mv	s2,a0
-    if(pa == 0) return 0;
+    if(pa == 0) return 0;        // 获取失败
     800019d0:	d15d                	beqz	a0,80001976 <vmafault+0x3a>
-    kref_inc((void*)pa);
+    kref_inc((void*)pa);         // 增加共享页的引用计数
     800019d2:	820ff0ef          	jal	ra,800009f2 <kref_inc>
     800019d6:	a819                	j	800019ec <vmafault+0xb0>
-    char *mem = kalloc();
+    char *mem = kalloc();        // 分配新的物理页
     800019d8:	9d2ff0ef          	jal	ra,80000baa <kalloc>
     800019dc:	8aaa                	mv	s5,a0
-    if(mem == 0) return 0;
+    if(mem == 0) return 0;      // 分配失败
     800019de:	4901                	li	s2,0
     800019e0:	d959                	beqz	a0,80001976 <vmafault+0x3a>
-    memset(mem, 0, PGSIZE);
+    memset(mem, 0, PGSIZE);     // 初始化为0
     800019e2:	6605                	lui	a2,0x1
     800019e4:	4581                	li	a1,0
     800019e6:	b9cff0ef          	jal	ra,80000d82 <memset>
     pa = (uint64)mem;
     800019ea:	8956                	mv	s2,s5
-  if(v->prot & PROT_READ)  perm |= PTE_R;
+  if(v->prot & PROT_READ)  perm |= PTE_R; // 读权限
     800019ec:	4c9c                	lw	a5,24(s1)
     800019ee:	0017f693          	andi	a3,a5,1
-  int perm = PTE_U;
+  int perm = PTE_U;              // 用户页标志
     800019f2:	4741                	li	a4,16
-  if(v->prot & PROT_READ)  perm |= PTE_R;
+  if(v->prot & PROT_READ)  perm |= PTE_R; // 读权限
     800019f4:	c291                	beqz	a3,800019f8 <vmafault+0xbc>
     800019f6:	4749                	li	a4,18
-  if(v->prot & PROT_WRITE) perm |= PTE_W;
+  if(v->prot & PROT_WRITE) perm |= PTE_W; // 写权限
     800019f8:	8b89                	andi	a5,a5,2
     800019fa:	c399                	beqz	a5,80001a00 <vmafault+0xc4>
     800019fc:	00476713          	ori	a4,a4,4
@@ -4008,7 +4026,7 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     80001a06:	050a3503          	ld	a0,80(s4)
     80001a0a:	ed8ff0ef          	jal	ra,800010e2 <mappages>
     80001a0e:	cd09                	beqz	a0,80001a28 <vmafault+0xec>
-    if(v->is_shm) kref_dec((void*)pa);
+    if(v->is_shm) kref_dec((void*)pa); // 减少共享页引用计数
     80001a10:	509c                	lw	a5,32(s1)
     80001a12:	c791                	beqz	a5,80001a1e <vmafault+0xe2>
     80001a14:	854a                	mv	a0,s2
@@ -4016,17 +4034,17 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     return 0;
     80001a1a:	4901                	li	s2,0
     80001a1c:	bfa9                	j	80001976 <vmafault+0x3a>
-    else kfree((void*)pa);
+    else kfree((void*)pa);            // 释放普通物理页
     80001a1e:	854a                	mv	a0,s2
     80001a20:	85aff0ef          	jal	ra,80000a7a <kfree>
     return 0;
     80001a24:	4901                	li	s2,0
     80001a26:	bf81                	j	80001976 <vmafault+0x3a>
-  vmstats_inc_lazy();
+  vmstats_inc_lazy();            // 更新惰性分配统计信息
     80001a28:	358050ef          	jal	ra,80006d80 <vmstats_inc_lazy>
-  return (uint64)pa;
+  return (uint64)pa;             // 返回物理页地址
     80001a2c:	b7a9                	j	80001976 <vmafault+0x3a>
-  if(v == 0) return 0;
+  if(v == 0) return 0;          // 不在任何 VMA 范围内
     80001a2e:	4901                	li	s2,0
     80001a30:	b799                	j	80001976 <vmafault+0x3a>
     return 0;
@@ -4036,9 +4054,9 @@ vmafault(struct proc *p, uint64 va, int iswrite)
     80001a38:	bf3d                	j	80001976 <vmafault+0x3a>
 
 0000000080001a3a <proc_mapstacks>:
-// Allocate a page for each process's kernel stack.
-// Map it high in memory, followed by an invalid
-// guard page.
+ * 参数：
+ *   kpgtbl - 内核页表
+ */
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
@@ -4110,8 +4128,9 @@ proc_mapstacks(pagetable_t kpgtbl)
     80001ac0:	cc9fe0ef          	jal	ra,80000788 <panic>
 
 0000000080001ac4 <procinit>:
-
-// initialize the proc table.
+ * 2. 为每个进程分配锁并初始化状态为UNUSED
+ * 3. 设置每个进程的内核栈地址
+ */
 void
 procinit(void)
 {
@@ -4188,9 +4207,9 @@ procinit(void)
     80001b6a:	8082                	ret
 
 0000000080001b6c <cpuid>:
-// Must be called with interrupts disabled,
-// to prevent race with process being moved
-// to a different CPU.
+ * 返回值：
+ *   当前CPU的ID
+ */
 int
 cpuid()
 {
@@ -4208,9 +4227,9 @@ cpuid()
     80001b7a:	8082                	ret
 
 0000000080001b7c <mycpu>:
-
-// Return this CPU's cpu struct.
-// Interrupts must be disabled.
+ * 返回值：
+ *   当前CPU的cpu结构体指针
+ */
 struct cpu*
 mycpu(void)
 {
@@ -4232,8 +4251,9 @@ mycpu(void)
     80001b96:	8082                	ret
 
 0000000080001b98 <myproc>:
-
-// Return the current struct proc *, or zero if none.
+ * 返回值：
+ *   当前进程的proc结构体指针，如果没有则返回0
+ */
 struct proc*
 myproc(void)
 {
@@ -6918,9 +6938,9 @@ syscall(void)
     80002e8a:	8082                	ret
 
 0000000080002e8c <proc_has_shm_key>:
-  }
-  return best;
-}
+ * 用途：
+ *   用于判断进程是否还有其他VMA引用同一个共享内存对象
+ */
 static int
 proc_has_shm_key(struct proc *p, int key, struct vma *skip)
 {
@@ -7225,7 +7245,7 @@ proc_has_shm_key(struct proc *p, int key, struct vma *skip)
     800030d8:	16878793          	addi	a5,a5,360
     800030dc:	953e                	add	a0,a0,a5
     800030de:	a011                	j	800030e2 <vma_find+0x3c>
-  return 0;
+  return 0;  // 没有找到包含该虚拟地址的VMA
     800030e0:	4501                	li	a0,0
 }
     800030e2:	6422                	ld	s0,8(sp)
@@ -7376,7 +7396,7 @@ sys_mmap(void)
     800031e4:	97d6                	add	a5,a5,s5
     800031e6:	577d                	li	a4,-1
     800031e8:	18e7a623          	sw	a4,396(a5)
-  len = PGROUNDUP(len);
+  len = PGROUNDUP(len);  // 将长度向上对齐到页边界
     800031ec:	6805                	lui	a6,0x1
     800031ee:	187d                	addi	a6,a6,-1 # fff <_entry-0x7ffff001>
     800031f0:	984e                	add	a6,a6,s3
@@ -7397,7 +7417,7 @@ sys_mmap(void)
     80003214:	a81d                	j	8000324a <sys_mmap+0x162>
       if(best == 0 || e < best) best = e;
     80003216:	853a                	mv	a0,a4
-  for(int i=0;i<NVMA;i++){
+  for(int i=0; i<NVMA; i++){
     80003218:	02878793          	addi	a5,a5,40
     8000321c:	00c78f63          	beq	a5,a2,8000323a <sys_mmap+0x152>
     if(!p->vmas[i].used) continue;
@@ -7629,7 +7649,7 @@ sys_munmap(void)
     if(!p->vmas[i].used) continue;
     800033ae:	4394                	lw	a3,0(a5)
     800033b0:	daf5                	beqz	a3,800033a4 <sys_munmap+0x8e>
-    if(!(b <= s || a >= e))   // overlap
+    if(!(b <= s || a >= e))   // 存在地址重叠
     800033b2:	6794                	ld	a3,8(a5)
     800033b4:	ff26f8e3          	bgeu	a3,s2,800033a4 <sys_munmap+0x8e>
     800033b8:	6b94                	ld	a3,16(a5)
@@ -7705,7 +7725,7 @@ sys_munmap(void)
     if(!p->vmas[i].used) continue;
     80003448:	4398                	lw	a4,0(a5)
     8000344a:	db75                	beqz	a4,8000343e <sys_munmap+0x128>
-    if(!(b <= s || a >= e))   // overlap
+    if(!(b <= s || a >= e))   // 存在地址重叠
     8000344c:	6798                	ld	a4,8(a5)
     8000344e:	ff2778e3          	bgeu	a4,s2,8000343e <sys_munmap+0x128>
     80003452:	6b98                	ld	a4,16(a5)
@@ -7874,7 +7894,7 @@ sys_munmap(void)
     8000358e:	97d6                	add	a5,a5,s5
     80003590:	1997a623          	sw	s9,396(a5)
     80003594:	a841                	j	80003624 <sys_munmap+0x30e>
-      shm_put(key);
+      shm_put(key);  // 没有其他引用，释放共享内存
     80003596:	856a                	mv	a0,s10
     80003598:	158030ef          	jal	ra,800066f0 <shm_put>
     8000359c:	b7e1                	j	80003564 <sys_munmap+0x24e>
@@ -7901,7 +7921,7 @@ sys_munmap(void)
     800035c8:	2785                	addiw	a5,a5,1
     800035ca:	02870713          	addi	a4,a4,40
     800035ce:	ff779be3          	bne	a5,s7,800035c4 <sys_munmap+0x2ae>
-  return -1;
+  return -1;  // 没有空闲的VMA索引
     800035d2:	87e6                	mv	a5,s9
       p->vmas[ni] = *v;
     800035d4:	00279593          	slli	a1,a5,0x2
@@ -14404,9 +14424,9 @@ virtio_disk_intr()
     80006584:	a04fa0ef          	jal	ra,80000788 <panic>
 
 0000000080006588 <shm_init>:
-
-
-
+ * 
+ * 创建并初始化保护共享内存对象的自旋锁。
+ */
 void
 shm_init(void)
 {
@@ -14427,8 +14447,9 @@ shm_init(void)
     800065aa:	8082                	ret
 
 00000000800065ac <shm_get>:
-
-// 找到或创建 key 对应对象，返回 index；失败返回 -1
+ *   2. 如果找到且满足条件，增加引用计数并返回
+ *   3. 如果没找到，创建一个新的共享内存对象
+ */
 int
 shm_get(int key, int npages)
 {
@@ -14446,7 +14467,7 @@ shm_get(int key, int npages)
     800065c2:	67250513          	addi	a0,a0,1650 # 8024bc30 <shmt>
     800065c6:	ee8fa0ef          	jal	ra,80000cae <acquire>
 
-  // 先找已有
+  // 先查找已有的共享内存对象
   for(int i=0;i<NSHM;i++){
     800065ca:	00245697          	auipc	a3,0x245
     800065ce:	67e68693          	addi	a3,a3,1662 # 8024bc48 <shmt+0x18>
@@ -14459,6 +14480,7 @@ shm_get(int key, int npages)
     800065dc:	4841                	li	a6,16
     800065de:	a015                	j	80006602 <shm_get+0x56>
     if(shmt.obj[i].used && shmt.obj[i].key == key){
+      // 检查对象是否已被标记删除
       if(shmt.obj[i].deleted){
         release(&shmt.lock);
     800065e0:	00245517          	auipc	a0,0x245
@@ -14468,6 +14490,7 @@ shm_get(int key, int npages)
     800065ec:	54fd                	li	s1,-1
     800065ee:	a879                	j	8000668c <shm_get+0xe0>
       }
+      // 检查请求的页数是否超过对象的总页数
       if(npages > shmt.obj[i].npages){
         release(&shmt.lock);
     800065f0:	853a                	mv	a0,a4
@@ -14504,6 +14527,7 @@ shm_get(int key, int npages)
     8000663c:	539c                	lw	a5,32(a5)
     8000663e:	fb37c9e3          	blt	a5,s3,800065f0 <shm_get+0x44>
       }
+      // 增加引用计数
       shmt.obj[i].refcnt++;
     80006642:	00245517          	auipc	a0,0x245
     80006646:	5ee50513          	addi	a0,a0,1518 # 8024bc30 <shmt>
@@ -14522,7 +14546,7 @@ shm_get(int key, int npages)
     }
   }
 
-  // 再创建
+  // 如果没有找到，创建一个新的共享内存对象
   for(int i=0;i<NSHM;i++){
     80006668:	4481                	li	s1,0
     8000666a:	6705                	lui	a4,0x1
@@ -14544,7 +14568,7 @@ shm_get(int key, int npages)
     8000667e:	00245517          	auipc	a0,0x245
     80006682:	5b250513          	addi	a0,a0,1458 # 8024bc30 <shmt>
     80006686:	ec0fa0ef          	jal	ra,80000d46 <release>
-  return -1;
+  return -1;  // 没有空闲的共享内存对象槽位
     8000668a:	54fd                	li	s1,-1
 }
     8000668c:	8526                	mv	a0,s1
@@ -14590,9 +14614,9 @@ shm_get(int key, int npages)
     800066ee:	bf79                	j	8000668c <shm_get+0xe0>
 
 00000000800066f0 <shm_put>:
-
-
-// refcnt--，若为 0 则释放对象里的所有页（kfree 会走页 refcnt，安全）
+ *   - 使用 kfree 释放物理页，kfree 会正确处理页的引用计数
+ *   - 如果对象已被标记删除，当引用计数为 0 时也会被完全释放
+ */
 void
 shm_put(int key)
 {
@@ -14618,13 +14642,17 @@ shm_put(int key)
     8000671e:	4641                	li	a2,16
     80006720:	a0b5                	j	8000678c <shm_put+0x9c>
     if(shmt.obj[i].used && shmt.obj[i].key == key){
+      // 检查引用计数的有效性
       if(shmt.obj[i].refcnt < 1)
         panic("shm_put: refcnt");
     80006722:	00002517          	auipc	a0,0x2
     80006726:	14e50513          	addi	a0,a0,334 # 80008870 <syscalls+0x478>
     8000672a:	85efa0ef          	jal	ra,80000788 <panic>
       shmt.obj[i].refcnt--;
+      
+      // 如果引用计数为 0，释放所有资源
       if(shmt.obj[i].refcnt == 0){
+        // 释放所有已分配的物理页
         for(int j=0;j<shmt.obj[i].npages;j++){
     8000672e:	2985                	addiw	s3,s3,1
     80006730:	0921                	addi	s2,s2,8
@@ -14640,6 +14668,7 @@ shm_put(int key)
     80006748:	b7dd                	j	8000672e <shm_put+0x3e>
           }
         }
+        // 重置对象状态
         shmt.obj[i].used = 0;
     8000674a:	6785                	lui	a5,0x1
     8000674c:	81878713          	addi	a4,a5,-2024 # 818 <_entry-0x7ffff7e8>
@@ -14710,8 +14739,9 @@ shm_put(int key)
     800067ec:	b7b9                	j	8000673a <shm_put+0x4a>
 
 00000000800067ee <shm_getpa>:
-
-// 取某页的 pa；若未分配则分配（lazy），返回 pa 或 0
+ *   3. 如果该页尚未分配，分配一个新的物理页并初始化为0
+ *   4. 返回该页的物理地址
+ */
 uint64
 shm_getpa(int key, int page_index)
 {
@@ -14739,10 +14769,10 @@ shm_getpa(int key, int page_index)
     8000681a:	81868693          	addi	a3,a3,-2024 # 818 <_entry-0x7ffff7e8>
     8000681e:	4641                	li	a2,16
     80006820:	a82d                	j	8000685a <shm_getpa+0x6c>
-      if(page_index < 0 || page_index >= shmt.obj[i].npages){
-        pa = 0;
         break;
       }
+      
+      // 如果该页尚未分配，执行惰性分配
       if(shmt.obj[i].pa[page_index] == 0){
         void *mem = kalloc();
     80006822:	b88fa0ef          	jal	ra,80000baa <kalloc>
@@ -14752,6 +14782,7 @@ shm_getpa(int key, int page_index)
           pa = 0;
           break;
         }
+        // 初始化新分配的物理页为0
         memset(mem, 0, PGSIZE);
     8000682a:	6605                	lui	a2,0x1
     8000682c:	4581                	li	a1,0
@@ -14802,6 +14833,7 @@ shm_getpa(int key, int page_index)
     80006896:	0087b903          	ld	s2,8(a5)
     8000689a:	f80904e3          	beqz	s2,80006822 <shm_getpa+0x34>
       }
+      
       pa = shmt.obj[i].pa[page_index];
     8000689e:	00649793          	slli	a5,s1,0x6
     800068a2:	97a6                	add	a5,a5,s1
@@ -14825,7 +14857,7 @@ shm_getpa(int key, int page_index)
     800068c0:	00245517          	auipc	a0,0x245
     800068c4:	37050513          	addi	a0,a0,880 # 8024bc30 <shmt>
     800068c8:	c7efa0ef          	jal	ra,80000d46 <release>
-  vmstats_inc_shm();
+  vmstats_inc_shm();  // 更新共享内存统计信息
     800068cc:	4e2000ef          	jal	ra,80006dae <vmstats_inc_shm>
 
   return pa;
@@ -14841,11 +14873,11 @@ shm_getpa(int key, int page_index)
     800068e0:	8082                	ret
 
 00000000800068e2 <shm_ctl>:
-
-
+ */
 int
 shm_ctl(int key, int cmd)
 {
+  // 目前仅支持 IPC_RMID 命令
   if(cmd != IPC_RMID)
     800068e2:	10059363          	bnez	a1,800069e8 <shm_ctl+0x106>
 {
@@ -14875,9 +14907,9 @@ shm_ctl(int key, int cmd)
     80006914:	81868693          	addi	a3,a3,-2024 # 818 <_entry-0x7ffff7e8>
     80006918:	4641                	li	a2,16
     8000691a:	a8b1                	j	80006976 <shm_ctl+0x94>
-
-      // 如果没人引用了，立刻释放
+      // 如果当前没有任何进程引用，立即释放资源
       if(shmt.obj[i].refcnt == 0){
+        // 释放所有已分配的物理页
         for(int j = 0; j < shmt.obj[i].npages; j++){
           if(shmt.obj[i].pa[j]){
             kfree((void*)shmt.obj[i].pa[j]);
@@ -14895,6 +14927,7 @@ shm_ctl(int key, int cmd)
     80006936:	b7dd                	j	8000691c <shm_ctl+0x3a>
           }
         }
+        // 完全重置对象状态
         shmt.obj[i].used = 0;
     80006938:	6705                	lui	a4,0x1
     8000693a:	81870793          	addi	a5,a4,-2024 # 818 <_entry-0x7ffff7e8>
@@ -14910,9 +14943,7 @@ shm_ctl(int key, int cmd)
     80006956:	0007ae23          	sw	zero,28(a5)
         shmt.obj[i].npages = 0;  
     8000695a:	0207a023          	sw	zero,32(a5)
-
       }
-
 
       release(&shmt.lock);
     8000695e:	00245517          	auipc	a0,0x245
@@ -14961,7 +14992,7 @@ shm_ctl(int key, int cmd)
     800069c8:	00245517          	auipc	a0,0x245
     800069cc:	26850513          	addi	a0,a0,616 # 8024bc30 <shmt>
     800069d0:	b76fa0ef          	jal	ra,80000d46 <release>
-  return -1; // key 不存在
+  return -1; // key 对应的共享内存对象不存在
     800069d4:	557d                	li	a0,-1
 }
     800069d6:	70e2                	ld	ra,56(sp)
@@ -14979,7 +15010,9 @@ shm_ctl(int key, int cmd)
     800069ea:	8082                	ret
 
 00000000800069ec <shm_is_deleted>:
-
+ *   - 如果对象不存在，默认返回 0（允许创建新对象）
+ *   - 用于在 shm_get 时检查是否可以创建或访问共享内存对象
+ */
 int
 shm_is_deleted(int key)
 {
@@ -15031,7 +15064,6 @@ shm_is_deleted(int key)
     80006a50:	af6fa0ef          	jal	ra,80000d46 <release>
   //shm_dump(key);
   return del;
-
 }
     80006a54:	8526                	mv	a0,s1
     80006a56:	60e2                	ld	ra,24(sp)

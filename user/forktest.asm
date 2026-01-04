@@ -144,8 +144,8 @@ main(void)
   da:	298000ef          	jal	ra,372 <exit>
 
 00000000000000de <start>:
-// wrapper so that it's OK if main() does not call exit().
-//
+ *   argv - 命令行参数数组
+ */
 
 void
 start(int argc, char **argv)
@@ -162,7 +162,8 @@ start(int argc, char **argv)
   ea:	288000ef          	jal	ra,372 <exit>
 
 00000000000000ee <strcpy>:
-}
+ *   目标字符串s的指针
+ */
 
 char*
 strcpy(char *s, const char *t)
@@ -188,6 +189,8 @@ strcpy(char *s, const char *t)
  108:	8082                	ret
 
 000000000000010a <strcmp>:
+ *   负数 - p小于q
+ */
 
 int
 strcmp(const char *p, const char *q)
@@ -215,6 +218,8 @@ strcmp(const char *p, const char *q)
  134:	8082                	ret
 
 0000000000000136 <strlen>:
+ *   字符串s的长度
+ */
 
 uint
 strlen(const char *s)
@@ -246,6 +251,8 @@ strlen(const char *s)
  15e:	bfe5                	j	156 <strlen+0x20>
 
 0000000000000160 <memset>:
+ *   目标内存区域dst的指针
+ */
 
 void*
 memset(void *dst, int c, uint n)
@@ -274,6 +281,8 @@ memset(void *dst, int c, uint n)
  180:	8082                	ret
 
 0000000000000182 <strchr>:
+ *   指向找到的字符的指针，如果未找到则返回NULL
+ */
 
 char*
 strchr(const char *s, char c)
@@ -302,6 +311,8 @@ strchr(const char *s, char c)
  1a4:	bfe5                	j	19c <strchr+0x1a>
 
 00000000000001a6 <gets>:
+ *   指向缓冲区buf的指针，如果读取失败则返回NULL
+ */
 
 char*
 gets(char *buf, int max)
@@ -375,6 +386,8 @@ gets(char *buf, int max)
  214:	8082                	ret
 
 0000000000000216 <stat>:
+ *   -1 - 失败
+ */
 
 int
 stat(const char *n, struct stat *st)
@@ -417,6 +430,8 @@ stat(const char *n, struct stat *st)
  24e:	bfc5                	j	23e <stat+0x28>
 
 0000000000000250 <atoi>:
+ *   转换后的整数
+ */
 
 int
 atoi(const char *s)
@@ -458,6 +473,8 @@ atoi(const char *s)
  296:	bfe5                	j	28e <atoi+0x3e>
 
 0000000000000298 <memmove>:
+ *   目标内存区域vdst的指针
+ */
 
 void*
 memmove(void *vdst, const void *vsrc, int n)
@@ -516,6 +533,8 @@ memmove(void *vdst, const void *vsrc, int n)
  2ee:	bfc9                	j	2c0 <memmove+0x28>
 
 00000000000002f0 <memcmp>:
+ *   负数 - s1小于s2
+ */
 
 int
 memcmp(const void *s1, const void *s2, uint n)
@@ -558,6 +577,8 @@ memcmp(const void *s1, const void *s2, uint n)
  328:	bfe5                	j	320 <memcmp+0x30>
 
 000000000000032a <memcpy>:
+ *   目标内存区域dst的指针
+ */
 
 void *
 memcpy(void *dst, const void *src, uint n)
@@ -575,6 +596,9 @@ memcpy(void *dst, const void *src, uint n)
  33c:	8082                	ret
 
 000000000000033e <sbrk>:
+ * 返回值：
+ *   指向新分配内存的指针
+ */
 
 char *
 sbrk(int n) {
@@ -592,6 +616,9 @@ sbrk(int n) {
  352:	8082                	ret
 
 0000000000000354 <sbrklazy>:
+ * 返回值：
+ *   指向新分配内存的指针
+ */
 
 char *
 sbrklazy(int n) {

@@ -7,7 +7,17 @@
 #include "syscall.h"
 #include "defs.h"
 
-// Fetch the uint64 at addr from the current process.
+/*
+ * 从当前进程中获取指定地址处的uint64值
+ * 
+ * 参数：
+ *   addr - 要读取的虚拟地址
+ *   ip   - 存储读取结果的指针
+ * 
+ * 返回值：
+ *   成功返回0，失败返回-1
+ *   失败原因：地址越界或copyin操作失败
+ */
 int
 fetchaddr(uint64 addr, uint64 *ip)
 {

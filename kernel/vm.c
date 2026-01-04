@@ -293,12 +293,27 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
+/*
+ * 复制父进程的页表到子进程（实现 Copy-On-Write 机制）
+ * 
+ * 参数：
+ *   old - 父进程的页表
+ *   new - 子进程的页表
+ *   sz  - 要复制的内存大小（字节）
+ * 
+ * 返回值：
+ *   成功返回 0；失败返回 -1
+ * 
+ * 实现原理：
+ *   1. 遍历父进程的所有用户页表项
+ *   2. 对于可写的用户页，将其改为只读并设置 COW 标志
+ *   3. 父子进程共享同一物理页，增加物理页的引用计数
+ *   4. 仅复制页表结构，不复制物理内存内容，提高 fork 效率
+ * 
+ * 注意：
+ *   - 只读页（如代码页）保持原样，无需设置 COW
+ *   - 失败时会回滚已建立的映射并释放资源
+ */
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
@@ -313,42 +328,64 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       continue;                 // 没有物理页就跳过
 
-
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
     if((flags & PTE_U) == 0)
-      continue;
+      continue;                 // 非用户页跳过
       
-    // 只对“原本可写的用户页做 COW
+    // 只对原本可写的用户页做 COW 处理
     // 代码页/只读页保持原样
     if(flags & PTE_W){
-      // 子进程和父进程映射要只读 + COW
+      // 子进程和父进程的映射都设置为只读 + COW 标志
       flags = (flags & ~PTE_W) | PTE_COW;
 
-      // 父进程也要
+      // 更新父进程的页表项
       *pte = PA2PTE(pa) | flags | PTE_V;
     }
 
-    // 共享同一物理页：引用计数 +1
+    // 共享同一物理页：增加物理页的引用计数
     kref_inc((void*)pa);
 
+    // 在子进程中建立映射
     if(mappages(new, i, PGSIZE, pa, flags) != 0){
-      // map 失败要回滚 refcnt
+      // 映射失败，回滚引用计数
       kref_dec((void*)pa);
       goto err;
     }
-    sfence_vma();
-
+    sfence_vma();               // 刷新 TLB，确保页表更新生效
   }
   return 0;
 
 err:
   // 回收子进程已经建立的映射：
-  // do_free=1 会对每个 pa 调 kfree()， kfree 再对 refcnt--。
+  // do_free=1 会对每个 pa 调用 kfree()，kfree 会自动减少引用计数
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
+/*
+ * 处理 Copy-On-Write (COW) 页面的写操作请求
+ * 
+ * 参数：
+ *   pagetable - 进程的页表
+ *   va        - 触发 COW 的虚拟地址
+ * 
+ * 返回值：
+ *   成功返回 0；失败返回 -1
+ *   失败原因包括：页表项不存在、虚拟地址无效、非 COW 页面、内存分配失败等
+ * 
+ * 实现原理：
+ *   1. 检查虚拟地址是否为有效且已映射的用户页
+ *   2. 验证页面是否为 COW 标记且当前不可写
+ *   3. 如果页面只有一个引用（没有其他进程共享），则直接恢复可写权限
+ *   4. 否则，分配新物理页并复制旧页内容
+ *   5. 更新页表项指向新物理页并恢复可写权限
+ *   6. 减少旧物理页的引用计数
+ * 
+ * 注意：
+ *   - 该函数会在页表更新后刷新 TLB，确保更改立即生效
+ *   - 当需要复制页面时，会更新 COW 统计信息
+ */
 int
 cowbreak(pagetable_t pagetable, uint64 va)
 {
@@ -356,11 +393,11 @@ cowbreak(pagetable_t pagetable, uint64 va)
 
   pte_t *pte = walk(pagetable, va, 0);
   if(pte == 0)
-    return -1;
+    return -1;                 // 页表项不存在
   if((*pte & PTE_V) == 0)
-    return -1;
+    return -1;                 // 虚拟地址未映射到物理页
   if((*pte & PTE_U) == 0)
-    return -1;
+    return -1;                 // 非用户页
 
   // 必须是 COW 且当前不可写
   if(((*pte & PTE_COW) == 0) || ((*pte & PTE_W) != 0))
@@ -372,24 +409,26 @@ cowbreak(pagetable_t pagetable, uint64 va)
   // 如果只有一个引用，不用拷贝，直接恢复可写
   if(kref_get((void*)pa_old) == 1){
     *pte = PA2PTE(pa_old) | ((flags | PTE_W) & ~PTE_COW) | PTE_V;
-    sfence_vma();
+    sfence_vma();              // 刷新 TLB
     return 0;
   }
 
+  // 分配新物理页
   char *mem = kalloc();
   if(mem == 0)
-    return -1;
+    return -1;                 // 内存分配失败
 
+  // 复制旧页内容到新页
   memmove(mem, (void*)pa_old, PGSIZE);
 
   // 旧页引用计数 -1
   kref_dec((void*)pa_old);
 
-  // 更新 PTE：指向新页，变可写，清掉 COW
+  // 更新 PTE：指向新页，变可写，清掉 COW 标志
   *pte = PA2PTE((uint64)mem) | ((flags | PTE_W) & ~PTE_COW) | PTE_V;
 
-  sfence_vma();
-  vmstats_inc_cow();
+  sfence_vma();                // 刷新 TLB
+  vmstats_inc_cow();           // 更新 COW 统计信息
 
   return 0;
 }
@@ -531,98 +570,163 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   }
 }
 
-// allocate and map user memory if process is referencing a page
-// that was lazily allocated in sys_sbrk().
-// returns 0 if va is invalid or already mapped, or if
-// out of physical memory, and physical address if successful.
+/*
+ * 处理进程堆区域的缺页异常（惰性内存分配）
+ * 
+ * 参数：
+ *   pagetable - 进程的页表
+ *   va        - 触发缺页异常的虚拟地址
+ *   read      - 标识是否为读操作（当前未使用）
+ * 
+ * 返回值：
+ *   成功返回分配的物理页地址；失败返回 0
+ *   失败原因包括：虚拟地址超出进程大小、已映射、内存分配失败、映射失败等
+ * 
+ * 实现原理：
+ *   1. 检查虚拟地址是否在进程的堆区域范围内
+ *   2. 确保虚拟地址未被映射
+ *   3. 分配新的物理页并初始化为0
+ *   4. 建立虚拟地址到物理页的映射
+ *   5. 返回分配的物理页地址
+ * 
+ * 注意：
+ *   - 这是 sys_sbrk 实现惰性内存分配的关键函数
+ *   - 只有在进程实际访问已分配但未映射的堆内存时才会被调用
+ *   - 失败时会自动释放已分配但未成功映射的物理页
+ */
 uint64
 vmfault(pagetable_t pagetable, uint64 va, int read)
 {
   uint64 mem;
   struct proc *p = myproc();
 
-  if (va >= p->sz)
+  if (va >= p->sz)              // 检查虚拟地址是否在进程地址空间范围内
     return 0;
-  va = PGROUNDDOWN(va);
-  if(ismapped(pagetable, va)) {
+  va = PGROUNDDOWN(va);         // 向下对齐到页边界
+  if(ismapped(pagetable, va)) { // 检查是否已映射
     return 0;
   }
-  mem = (uint64) kalloc();
+  mem = (uint64) kalloc();      // 分配新物理页
   if(mem == 0)
-    return 0;
-  memset((void *) mem, 0, PGSIZE);
+    return 0;                   // 内存分配失败
+  memset((void *) mem, 0, PGSIZE); // 初始化为0
   if (mappages(p->pagetable, va, PGSIZE, mem, PTE_W|PTE_U|PTE_R) != 0) {
-    kfree((void *)mem);
+    kfree((void *)mem);         // 映射失败，释放物理页
     return 0;
   }
-  return mem;
+  return mem;                   // 返回成功分配的物理页地址
 }
 
+/*
+ * 检查虚拟地址是否已映射到物理页
+ * 
+ * 参数：
+ *   pagetable - 进程的页表
+ *   va        - 要检查的虚拟地址
+ * 
+ * 返回值：
+ *   1 表示已映射；0 表示未映射
+ * 
+ * 实现原理：
+ *   1. 查找虚拟地址对应的页表项
+ *   2. 如果页表项存在且有效（PTE_V 标志置位），返回 1
+ *   3. 否则返回 0
+ * 
+ * 注意：
+ *   - 仅检查映射存在性，不检查权限
+ *   - 用于 vmfault 和其他内存管理函数中的辅助检查
+ */
 int
 ismapped(pagetable_t pagetable, uint64 va)
 {
   pte_t *pte = walk(pagetable, va, 0);
-  if (pte == 0) {
+  if (pte == 0) {               // 页表项不存在
     return 0;
   }
   if (*pte & PTE_V){
-    return 1;
+    return 1;                   // 页表项存在且有效
   }
-  return 0;
+  return 0;                     // 页表项存在但无效
 }
 
 
+/*
+ * 处理 VMA（虚拟内存区域）相关的缺页异常
+ * 
+ * 参数：
+ *   p        - 发生缺页异常的进程
+ *   va       - 触发缺页异常的虚拟地址
+ *   iswrite  - 标识是否为写操作
+ * 
+ * 返回值：
+ *   成功返回分配的物理页地址或 1（权限修正情况）；失败返回 0
+ *   失败原因包括：虚拟地址不在任何 VMA 范围内、权限不足、内存分配失败、映射失败等
+ * 
+ * 实现原理：
+ *   1. 查找虚拟地址所属的 VMA 结构
+ *   2. 进行权限检查（读/写权限是否符合 VMA 配置）
+ *   3. 如果已经映射但权限不足（如可写 VMA 但 PTE 不可写），修正权限
+ *   4. 如果未映射：
+ *      - 对于共享内存 VMA，从共享内存对象获取或分配物理页
+ *      - 对于普通 VMA，分配新的物理页
+ *   5. 建立虚拟地址到物理页的映射
+ *   6. 返回物理页地址或成功标志
+ * 
+ * 注意：
+ *   - 这是处理 mmap 映射区域缺页异常的关键函数
+ *   - 支持匿名映射和共享内存映射两种类型
+ *   - 失败时会自动回滚已分配的资源（如物理页）
+ */
 uint64
 vmafault(struct proc *p, uint64 va, int iswrite)
 {
-  va = PGROUNDDOWN(va);
+  va = PGROUNDDOWN(va);         // 向下对齐到页边界
 
-  struct vma *v = vma_find(p, va);
-  if(v == 0) return 0;
+  struct vma *v = vma_find(p, va); // 查找虚拟地址所属的 VMA
+  if(v == 0) return 0;          // 不在任何 VMA 范围内
 
   // 权限检查：VMA 不允许写但发生写 fault -> 不处理，让上层 kill
   if(iswrite && (v->prot & PROT_WRITE) == 0)
     return 0;
-  if((v->prot & PROT_READ) == 0)
+  if((v->prot & PROT_READ) == 0) // VMA 不允许读 -> 不处理
     return 0;
 
   pte_t *pte = walk(p->pagetable, va, 0);
-  if(pte && (*pte & PTE_V)){
-    // 已经映射：如果 VMA 允许写，但 PTE 没写位，补上
+  if(pte && (*pte & PTE_V)){     // 如果已经映射
+    // 已经映射：如果 VMA 允许写，但 PTE 没写位，补上写权限
     if((v->prot & PROT_WRITE) && ((*pte & PTE_W) == 0)){
       *pte |= PTE_W;
-      sfence_vma();     // 刷新 TLB
-      return 1;
+      sfence_vma();              // 刷新 TLB
+      return 1;                  // 返回成功标志
     }
     // 已映射且权限没问题：这次 fault 不该由我们处理
     return 0;
   }
-  int idx = (va - v->start) / PGSIZE;
+  int idx = (va - v->start) / PGSIZE; // 计算页在 VMA 中的索引
   uint64 pa;
 
-  if(v->is_shm){
-    pa = shm_getpa(v->shm_key, idx);
-    if(pa == 0) return 0;
-    // 映射共享页时，记得增加页引用计数（如果你的 kfree 用 refcnt）
-    kref_inc((void*)pa);
-  } else {
-    char *mem = kalloc();
-    if(mem == 0) return 0;
-    memset(mem, 0, PGSIZE);
+  if(v->is_shm){                 // 共享内存 VMA
+    pa = shm_getpa(v->shm_key, idx); // 从共享内存对象获取物理页
+    if(pa == 0) return 0;        // 获取失败
+    kref_inc((void*)pa);         // 增加共享页的引用计数
+  } else {                      // 普通 VMA（匿名映射）
+    char *mem = kalloc();        // 分配新的物理页
+    if(mem == 0) return 0;      // 分配失败
+    memset(mem, 0, PGSIZE);     // 初始化为0
     pa = (uint64)mem;
   }
   // 未映射：按 VMA prot 建立映射
-  int perm = PTE_U;
-  if(v->prot & PROT_READ)  perm |= PTE_R;
-  if(v->prot & PROT_WRITE) perm |= PTE_W;
+  int perm = PTE_U;              // 用户页标志
+  if(v->prot & PROT_READ)  perm |= PTE_R; // 读权限
+  if(v->prot & PROT_WRITE) perm |= PTE_W; // 写权限
 
   if(mappages(p->pagetable, va, PGSIZE, pa, perm) != 0){
-    // 回滚, 共享页要 dec，匿名页要 kfree
-    if(v->is_shm) kref_dec((void*)pa);
-    else kfree((void*)pa);
+    // 映射失败，回滚资源
+    if(v->is_shm) kref_dec((void*)pa); // 减少共享页引用计数
+    else kfree((void*)pa);            // 释放普通物理页
     return 0;
   }
-  vmstats_inc_lazy();
-  return (uint64)pa;
+  vmstats_inc_lazy();            // 更新惰性分配统计信息
+  return (uint64)pa;             // 返回物理页地址
 }
 

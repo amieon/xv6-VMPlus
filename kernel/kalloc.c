@@ -24,13 +24,30 @@ struct {
 } kmem;
 
 
+/*
+ * 物理页引用计数管理结构
+ * 
+ * 该结构用于跟踪系统中每个物理页的引用计数，实现了Copy-On-Write和共享内存等功能。
+ * 引用计数确保物理页在被多个进程或组件引用时不会被过早释放。
+ */
 struct {
-  struct spinlock lock;
-  int refcnt[MAXPAGES];
+  struct spinlock lock;        // 保护引用计数的自旋锁
+  int refcnt[MAXPAGES];        // 每个物理页的引用计数数组，通过PA2IDX(pa)索引
 } kref;
 
-//这三个函数作用差不多
-//先加锁，在操作，最后释放锁再返回现在的引用数
+/*
+ * 获取指定物理页的当前引用计数
+ * 
+ * 参数：
+ *   pa - 物理页的起始地址
+ * 
+ * 返回值：
+ *   该物理页的当前引用计数
+ * 
+ * 注意：
+ *   - 此函数需要通过PA2IDX将物理地址转换为引用计数数组的索引
+ *   - 操作过程中会获取kref锁以保证线程安全
+ */
 int     
 kref_get(void *pa){
   int n;
@@ -39,6 +56,20 @@ kref_get(void *pa){
   release(&kref.lock);
   return n;
 }
+/*
+ * 增加指定物理页的引用计数
+ * 
+ * 参数：
+ *   pa - 物理页的起始地址
+ * 
+ * 返回值：
+ *   增加后的引用计数
+ * 
+ * 用途：
+ *   - 当物理页被多个进程共享时（如COW机制）
+ *   - 当物理页被共享内存对象引用时
+ *   - 任何需要延长物理页生命周期的场景
+ */
 int             
 kref_inc(void *pa){
   int n;
@@ -47,6 +78,19 @@ kref_inc(void *pa){
   release(&kref.lock);
   return n;
 }
+/*
+ * 减少指定物理页的引用计数
+ * 
+ * 参数：
+ *   pa - 物理页的起始地址
+ * 
+ * 返回值：
+ *   减少后的引用计数
+ * 
+ * 注意：
+ *   - 当引用计数减为0时，调用者应负责释放该物理页
+ *   - 操作过程中会获取kref锁以保证线程安全
+ */
 int            
 kref_dec(void *pa){
   int n;
@@ -73,9 +117,13 @@ freerange(void *pa_start, void *pa_end)
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
 
-    //这个时候所有页都不是kmallc生成的，他们的引用数都为0,不为1
-    //在kfree后引用数都会变成-1,而引用数小于0三不被允许的
-    //所以在初始kfree之前，我们为所有页的引用数初始化为1
+    /*
+     * 初始化物理页的引用计数
+     * 
+     * 新发现的物理页初始引用计数为0，但kfree会将其减1
+     * 为避免引用计数变为负数，在调用kfree前将其设置为1
+     * 这样kfree后引用计数变为0，物理页会被正确加入空闲链表
+     */
     acquire(&kref.lock);
     kref.refcnt[PA2IDX(p)] = 1;
     release(&kref.lock);
@@ -95,9 +143,13 @@ kfree(void *pa)
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
-  //如果某个进程将这个页free后引用数不为0
-  //那么说明有其他进程要用到这个页，故不真正将其free了
-  if(kref_dec(pa)>0)
+  /*
+   * 检查引用计数，决定是否真正释放物理页
+   * 
+   * 如果减少引用计数后仍大于0，说明还有其他进程或组件在使用该页
+   * 此时不释放物理页，直接返回
+   */
+  if(kref_dec(pa) > 0)
     return;
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -128,11 +180,15 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   
-  //alloc出页后，默认引用数为1
+  /*
+   * 初始化新分配页的引用计数
+   * 
+   * 新分配的物理页默认引用计数为1，表示被当前调用者拥有
+   */
   if(r){
-  acquire(&kref.lock);
-  kref.refcnt[PA2IDX(r)] = 1;
-  release(&kref.lock);
+    acquire(&kref.lock);
+    kref.refcnt[PA2IDX(r)] = 1;
+    release(&kref.lock);
   }
   extern uint64 kalloc_cnt;
   kalloc_cnt++;

@@ -1,28 +1,62 @@
+/*
+ * cow_basic.c - 写时复制(COW)机制测试程序
+ * 
+ * 该程序用于验证内核的写时复制机制是否正常工作。写时复制是一种优化技术，
+ * 当子进程通过fork创建时，它与父进程共享相同的物理内存页，直到其中一个进程
+ * 尝试修改页面内容，这时才会为修改的进程创建页面的副本。
+ * 
+ * 测试流程：
+ * 1. 定义一个全局变量x并初始化为1
+ * 2. 父进程创建子进程
+ * 3. 子进程修改x的值为2并打印
+ * 4. 父进程等待子进程结束后，打印x的值
+ * 5. 如果父进程中的x值仍然是1，说明COW机制正常工作（测试通过）
+ * 6. 如果父进程中的x值被修改为2，说明COW机制失效（测试失败）
+ */
+
 #include "../kernel/types.h"
 #include "../kernel/stat.h"
 #include "user.h"
 
-int x = 1;
+int x = 1;  /* 全局变量，用于测试COW机制 */
 
+/*
+ * main - 程序入口函数
+ * 
+ * 执行COW机制测试
+ * 
+ * 参数：
+ *   无
+ * 
+ * 返回值：
+ *   测试通过时返回0，失败时返回1
+ */
 int
 main(void)
 {
+  /* 创建子进程 */
   int pid = fork();
-  if(pid < 0){
+  if(pid < 0){  /* 检查fork是否失败 */
     printf("fork failed\n");
     exit(1);
   }
-  if(pid == 0){
-    x = 2;
-    printf("child: x=%d\n", x);
-    exit(0);
+  
+  if(pid == 0){  /* 子进程执行路径 */
+    x = 2;  /* 修改全局变量x的值，这应该触发COW机制 */
+    printf("child: x=%d\n", x);  /* 打印子进程中的x值 */
+    exit(0);  /* 子进程退出 */
   }
-  wait(0);
-  printf("parent: x=%d\n", x);
+  
+  /* 父进程执行路径 */
+  wait(0);  /* 等待子进程结束 */
+  printf("parent: x=%d\n", x);  /* 打印父进程中的x值 */
+  
+  /* 验证父进程中的x值是否保持不变 */
   if(x != 1){
-    printf("FAIL: parent saw x=%d\n", x);
+    printf("FAIL: parent saw x=%d\n", x);  /* COW机制失效，测试失败 */
     exit(1);
   }
-  printf("PASS\n");
+  
+  printf("PASS\n");  /* COW机制正常工作，测试通过 */
   exit(0);
 }
