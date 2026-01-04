@@ -1,9 +1,9 @@
 ## xv6-VMPlus 
 
-![Language](https://img.shields.io/badge/language-C%20%26%20Assembly-blue)![Arch](https://img.shields.io/badge/arch-RISC--V-green)![License](https://img.shields.io/badge/license-MIT-orange.svg)
+![Language](https://img.shields.io/badge/language-C%20%26%20Assembly-blue)  ![Arch](https://img.shields.io/badge/arch-RISC--V-green)  ![License](https://img.shields.io/badge/license-MIT-orange.svg)
+
+
 基于 xv6 操作系统的虚拟内存与高效 IPC 机制设计与实现
-
-
 
 ## 项目简介
 
