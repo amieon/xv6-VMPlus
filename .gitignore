@@ -1,0 +1,10 @@
+user/**
+kernel/**/*.o
+kernel/**/*.d
+
+
+!user/**/*.c
+!user/**/*.asm
+
+
+
