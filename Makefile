@@ -174,6 +174,7 @@ UPROGS=\
 	$U/_ipc_bench\
 	$U/_fork_cow_test\
 	$U/_sem_vs_busy\
+	$U/_rmid_bench\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
