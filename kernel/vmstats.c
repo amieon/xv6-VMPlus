@@ -8,6 +8,9 @@ uint64 kalloc_cnt = 0;
 uint64 copyin_bytes = 0;
 uint64 copyout_bytes = 0;
 
+uint64 fork_copy_pages = 0;
+uint64 fork_share_pages = 0;
+
 struct {
   struct spinlock lock;
   uint64 cow_faults;

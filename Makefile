@@ -152,6 +152,7 @@ UPROGS=\
 	$U/_dorphan\
 	$U/_cowtest\
 	$U/_cow_basic\
+	$U/_cow_bench\
 	$U/_cow_bidir\
 	$U/_cow_heap\
 	$U/_cow_pagewalk\
@@ -219,3 +220,7 @@ check-qemu-version:
 		echo "ERROR: Need qemu version >= $(MIN_QEMU_VERSION)"; \
 		exit 1; \
 	fi
+	
+ifdef EAGER_FORK
+CFLAGS += -DEAGER_FORK
+endif

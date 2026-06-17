@@ -317,6 +317,30 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
+#ifdef EAGER_FORK
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  char *mem;
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0) continue;
+    if((*pte & PTE_V) == 0) continue;
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if((flags & PTE_U) == 0) continue;
+    if((mem = kalloc()) == 0) goto err;
+    memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+      kfree(mem);
+      goto err;
+    }
+    { extern uint64 fork_copy_pages; fork_copy_pages++; } 
+  }
+  return 0;
+err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+#else
   pte_t *pte;
   uint64 pa, i;
   uint flags;
@@ -353,6 +377,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       kref_dec((void*)pa);
       goto err;
     }
+    { extern uint64 fork_share_pages; fork_share_pages++; }
     sfence_vma();               // 刷新 TLB，确保页表更新生效
   }
   return 0;
@@ -362,6 +387,7 @@ err:
   // do_free=1 会对每个 pa 调用 kfree()，kfree 会自动减少引用计数
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
+#endif
 }
 /*
  * 处理 Copy-On-Write (COW) 页面的写操作请求

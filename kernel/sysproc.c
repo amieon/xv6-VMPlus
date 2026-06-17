@@ -598,10 +598,12 @@ sys_vmstats(void)
   struct vmstats_user s;
   vmstats_snapshot(&s);
 
-  extern uint64 kalloc_cnt, copyin_bytes, copyout_bytes;
+  extern uint64 kalloc_cnt, copyin_bytes, copyout_bytes, fork_copy_pages, fork_share_pages;
   s.kalloc_cnt = kalloc_cnt;
   s.copyin_bytes = copyin_bytes;
   s.copyout_bytes = copyout_bytes;
+  s.fork_copy_pages  = fork_copy_pages;   
+  s.fork_share_pages = fork_share_pages;  
 
   if(copyout(myproc()->pagetable, uaddr, (char*)&s, sizeof(s)) < 0)
     return -1;
