@@ -158,6 +158,7 @@ UPROGS=\
 	$U/_cow_pagewalk\
 	$U/_cow_multipage\
 	$U/_cow_forkstorm\
+	$U/_lazy_bench\
 	$U/_mmap_basic\
 	$U/_mmap_no_unmap\
 	$U/_mmap_rw_test\
