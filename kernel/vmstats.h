@@ -8,5 +8,7 @@ struct vmstats_user {
 
   uint64 fork_copy_pages;    // fork 时真正 memmove 复制的用户页
   uint64 fork_share_pages;   // fork 时共享(不复制)的用户页
+
+  uint64 kfree_cnt;
 };
 

@@ -90,29 +90,29 @@ print_delta(char *tag, int t0, int t1,
 int
 main(void)
 {
-  a8:	7105                	addi	sp,sp,-480
-  aa:	ef86                	sd	ra,472(sp)
-  ac:	eba2                	sd	s0,464(sp)
-  ae:	e7a6                	sd	s1,456(sp)
-  b0:	e3ca                	sd	s2,448(sp)
-  b2:	ff4e                	sd	s3,440(sp)
-  b4:	fb52                	sd	s4,432(sp)
-  b6:	f756                	sd	s5,424(sp)
-  b8:	f35a                	sd	s6,416(sp)
-  ba:	ef5e                	sd	s7,408(sp)
-  bc:	1380                	addi	s0,sp,480
+  a8:	7141                	addi	sp,sp,-496
+  aa:	f786                	sd	ra,488(sp)
+  ac:	f3a2                	sd	s0,480(sp)
+  ae:	efa6                	sd	s1,472(sp)
+  b0:	ebca                	sd	s2,464(sp)
+  b2:	e7ce                	sd	s3,456(sp)
+  b4:	e3d2                	sd	s4,448(sp)
+  b6:	ff56                	sd	s5,440(sp)
+  b8:	fb5a                	sd	s6,432(sp)
+  ba:	f75e                	sd	s7,424(sp)
+  bc:	1b80                	addi	s0,sp,496
   struct vmstats_user a,b;
   int t0,t1;
 
   // pipe
   vmstats(&a);
-  be:	f7040513          	addi	a0,s0,-144
+  be:	f6840513          	addi	a0,s0,-152
   c2:	5b4000ef          	jal	ra,676 <vmstats>
   t0 = uptime();
   c6:	570000ef          	jal	ra,636 <uptime>
   ca:	89aa                	mv	s3,a0
   if(pipe(pfd) < 0){
-  cc:	e2840513          	addi	a0,s0,-472
+  cc:	e1840513          	addi	a0,s0,-488
   d0:	4de000ef          	jal	ra,5ae <pipe>
   d4:	06054363          	bltz	a0,13a <main+0x92>
   int pid = fork();
@@ -121,10 +121,10 @@ main(void)
   if(pid == 0){
   de:	c53d                	beqz	a0,14c <main+0xa4>
   close(pfd[0]);
-  e0:	e2842503          	lw	a0,-472(s0)
+  e0:	e1842503          	lw	a0,-488(s0)
   e4:	4e2000ef          	jal	ra,5c6 <close>
   for(int i=0;i<CHUNK;i++) tmp[i] = (char)(i);
-  e8:	e3040713          	addi	a4,s0,-464
+  e8:	e2040713          	addi	a4,s0,-480
   ec:	4781                	li	a5,0
   ee:	10000693          	li	a3,256
   f2:	00f70023          	sb	a5,0(a4)
@@ -144,8 +144,8 @@ main(void)
  10e:	84be                	mv	s1,a5
     if(write(pfd[1], tmp, n) != n){
  110:	864a                	mv	a2,s2
- 112:	e3040593          	addi	a1,s0,-464
- 116:	e2c42503          	lw	a0,-468(s0)
+ 112:	e2040593          	addi	a1,s0,-480
+ 116:	e1c42503          	lw	a0,-484(s0)
  11a:	4a4000ef          	jal	ra,5be <write>
  11e:	06a91163          	bne	s2,a0,180 <main+0xd8>
     sent += n;
@@ -167,14 +167,14 @@ main(void)
  146:	4505                	li	a0,1
  148:	456000ef          	jal	ra,59e <exit>
     close(pfd[1]);
- 14c:	e2c42503          	lw	a0,-468(s0)
+ 14c:	e1c42503          	lw	a0,-484(s0)
  150:	476000ef          	jal	ra,5c6 <close>
     while(got < TOTAL_BYTES){
  154:	00800937          	lui	s2,0x800
       int n = read(pfd[0], tmp, sizeof(tmp));
  158:	10000613          	li	a2,256
- 15c:	e3040593          	addi	a1,s0,-464
- 160:	e2842503          	lw	a0,-472(s0)
+ 15c:	e2040593          	addi	a1,s0,-480
+ 160:	e1842503          	lw	a0,-488(s0)
  164:	452000ef          	jal	ra,5b6 <read>
       if(n <= 0) break;
  168:	00a05563          	blez	a0,172 <main+0xca>
@@ -183,7 +183,7 @@ main(void)
     while(got < TOTAL_BYTES){
  16e:	ff24c5e3          	blt	s1,s2,158 <main+0xb0>
     close(pfd[0]);
- 172:	e2842503          	lw	a0,-472(s0)
+ 172:	e1842503          	lw	a0,-488(s0)
  176:	450000ef          	jal	ra,5c6 <close>
     exit(0);
  17a:	4501                	li	a0,0
@@ -193,7 +193,7 @@ main(void)
  184:	aa050513          	addi	a0,a0,-1376 # c20 <malloc+0x16c>
  188:	073000ef          	jal	ra,9fa <printf>
   close(pfd[1]);
- 18c:	e2c42503          	lw	a0,-468(s0)
+ 18c:	e1c42503          	lw	a0,-484(s0)
  190:	436000ef          	jal	ra,5c6 <close>
   wait(0);
  194:	4501                	li	a0,0
@@ -203,11 +203,11 @@ main(void)
  19a:	49c000ef          	jal	ra,636 <uptime>
  19e:	84aa                	mv	s1,a0
   vmstats(&b);
- 1a0:	f3040513          	addi	a0,s0,-208
+ 1a0:	f2040513          	addi	a0,s0,-224
  1a4:	4d2000ef          	jal	ra,676 <vmstats>
   print_delta("PIPE IPC", t0, t1, &a, &b);
- 1a8:	f3040713          	addi	a4,s0,-208
- 1ac:	f7040693          	addi	a3,s0,-144
+ 1a8:	f2040713          	addi	a4,s0,-224
+ 1ac:	f6840693          	addi	a3,s0,-152
  1b0:	8626                	mv	a2,s1
  1b2:	85ce                	mv	a1,s3
  1b4:	00001517          	auipc	a0,0x1
@@ -216,7 +216,7 @@ main(void)
 
   // shm+sem
   vmstats(&a);
- 1c0:	f7040513          	addi	a0,s0,-144
+ 1c0:	f6840513          	addi	a0,s0,-152
  1c4:	4b2000ef          	jal	ra,676 <vmstats>
   t0 = uptime();
  1c8:	46e000ef          	jal	ra,636 <uptime>
@@ -265,9 +265,9 @@ main(void)
  22a:	0087979b          	slliw	a5,a5,0x8
  22e:	97a6                	add	a5,a5,s1
  230:	0087c783          	lbu	a5,8(a5)
- 234:	e2f40823          	sb	a5,-464(s0)
+ 234:	e2f40023          	sb	a5,-480(s0)
       (void)x;
- 238:	e3044783          	lbu	a5,-464(s0)
+ 238:	e2044783          	lbu	a5,-480(s0)
       r->tail++;
  23c:	2705                	addiw	a4,a4,1
  23e:	c0d8                	sw	a4,4(s1)
@@ -346,11 +346,11 @@ main(void)
  2dc:	35a000ef          	jal	ra,636 <uptime>
  2e0:	84aa                	mv	s1,a0
   vmstats(&b);
- 2e2:	f3040513          	addi	a0,s0,-208
+ 2e2:	f2040513          	addi	a0,s0,-224
  2e6:	390000ef          	jal	ra,676 <vmstats>
   print_delta("SHM+SEM IPC", t0, t1, &a, &b);
- 2ea:	f3040713          	addi	a4,s0,-208
- 2ee:	f7040693          	addi	a3,s0,-144
+ 2ea:	f2040713          	addi	a4,s0,-224
+ 2ee:	f6840693          	addi	a3,s0,-152
  2f2:	8626                	mv	a2,s1
  2f4:	85d6                	mv	a1,s5
  2f6:	00001517          	auipc	a0,0x1

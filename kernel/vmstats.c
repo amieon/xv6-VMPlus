@@ -10,6 +10,7 @@ uint64 copyout_bytes = 0;
 
 uint64 fork_copy_pages = 0;
 uint64 fork_share_pages = 0;
+uint64 kfree_cnt = 0;
 
 struct {
   struct spinlock lock;
