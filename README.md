@@ -335,23 +335,6 @@ sem_post(semid);  // V：释放资源并唤醒等待者
 - [实验文档](docs/实验文档.pdf)
 - [函数手册](docs/函数手册.pdf)
 
-### 目录结构
-
-```text
-.
-├── kernel/
-├── user/
-│   ├── lazybench.c     # 懒分配
-│   ├── cowbench.c      # COW fork（3 实验 + 正确性 + 泄漏）
-│   ├── ipcbench.c      # pipe vs SHM+SEM 零拷贝
-│   ├── semvsbusy.c     # 阻塞信号量 vs 忙等
-│   └── rmidbench.c     # IPC_RMID 延迟回收
-├── docs/
-│   ├── img/            # 实验图（见各实验小节的 TODO）
-│   ├── 实验文档.pdf
-│   └── 函数手册.pdf
-
-```
 
 ---
 
