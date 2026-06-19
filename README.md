@@ -214,10 +214,11 @@ sem_post(semid);  // V：释放资源并唤醒等待者
 - `K=0` 行 `kalloc=0`：**映射 256 页但一页物理内存都未分配**，证明 `mmap` 只建立 VMA 元数据。
 - `lazy_faults` 严格等于访问页数（slope=1），小 K 时 `kalloc` 多出的极少数页为按需建立的 Sv39 页表骨架页（地址空间一次性建好后不再增长）。
 
-> 📊 **图（TODO）**：`docs/img/lazy_alloc.png`（访问页数 vs 分配页数，slope=1，强调 K=0 处零分配）
-> <!-- ![懒分配](docs/img/lazy_alloc.png) -->
+访问页数 vs 分配页数，slope=1， K=0 处零分配
 
-复现：`$ lazybench`
+![懒分配](docs/img/lazy_alloc.png)
+
+复现：`$ lazy_bench`
 
 ---
 
@@ -250,11 +251,17 @@ sem_post(semid);  // V：释放资源并唤醒等待者
 
 **实验 C — 资源回收无泄漏。** 连续 500 轮 `fork → 子进程写一半页触发 COW → exit`，内核在用物理页数（`kalloc_cnt - kfree_cnt`）**前后差值 = 0**，零泄漏、零双重释放。
 
-> 📊 **图（TODO）**：`docs/img/cow_exp_a.png`（复制量 vs 写入量，三条 N 扫描线压在 slope=1 理想线上）
-> 📊 **图（TODO）**：`docs/img/cow_exp_b.png`（COW vs eager：fork 时复制 0 vs 复制整个驻留集）
-> <!-- ![COW-A](docs/img/cow_exp_a.png) ![COW-B](docs/img/cow_exp_b.png) -->
+复制量 vs 写入量，三条 N 扫描线压在 slope=1 理想线上
 
-复现：`$ cowbench`（COW 内核）；`make qemu EAGER_FORK=1` 后 `$ cowbench`（eager 基线）
+![COW-A](docs/img/cow_exp_a.png)
+
+COW vs eager：fork 时复制 0 vs 复制整个驻留集
+
+![COW-B](docs/img/cow_exp_b.png)
+
+![COW-B2](docs/img/cow_exp_b2.png)
+
+复现：`$ cow_bench`（COW 内核）；`make qemu EAGER_FORK=1` 后 `$ cow_bench`（eager 基线）
 
 ---
 
@@ -270,17 +277,26 @@ sem_post(semid);  // V：释放资源并唤醒等待者
 | 4 MB | 4,194,304 | **0** | 117.0 | 4.6 |
 | 8 MB | 8,388,608 | **0** | 244.5 | 9.0 |
 
-- **核心结论（铁证）**：pipe 的 `copyin/copyout` 精确等于负载（8MB 即 2×8MB 过内核），**SHM 全程为 0**（`copyout` 仅余 5–40 字节的 `wait()`/`vmstats` 常量噪声）——零拷贝名副其实，且该指标与计时精度无关。
+- **核心结论**：pipe 的 `copyin/copyout` 精确等于负载（8MB 即 2×8MB 过内核），**SHM 全程为 0**（`copyout` 仅余 5–40 字节的 `wait()`/`vmstats` 常量噪声）——零拷贝名副其实，且该指标与计时精度无关。
 - **共享页复用**：`shm_faults` 恒为 34（16 数据页 + ring 头页等），首次缺页后全程复用、零新增缺页。
 - **耗时仅作趋势参考**：ticks 精度为 10ms，大负载下 SHM 耗时已接近计时下限，故时间加速比仅取 ≥4MB 作趋势（约一个数量级），不作为精确指标。
 - **正确性**：全部负载逐块校验通过（ALL TRANSFERS VERIFIED）。
 
-> 📊 **图（TODO）**：`docs/img/ipc_copy_bytes.png`（内核拷贝量：pipe = 2×负载 vs SHM ≈ 0，**主图**）
-> 📊 **图（TODO）**：`docs/img/ipc_time.png`（传输耗时双线，log-log，趋势）
-> 📊 **图（TODO）**：`docs/img/ipc_speedup.png`（加速比，仅 ≥1MB，标注计时下限）
-> <!-- ![IPC-bytes](docs/img/ipc_copy_bytes.png) ![IPC-time](docs/img/ipc_time.png) -->
 
-复现：`$ ipcbench`
+
+内核拷贝量：pipe = 2×负载 vs SHM ≈ 0
+
+![IPC-bytes](docs/img/ipc_copybytes.png)
+
+传输耗时双线，log-log，趋势相同
+
+![IPC-time](docs/img/ipc_time.png)
+
+加速比，仅 ≥1MB，计时下限为10ms
+
+![IPC-time](docs/img/ipc_speedup.png)
+
+复现：`$ ipc_bench`
 
 ---
 
@@ -297,10 +313,12 @@ sem_post(semid);  // V：释放资源并唤醒等待者
 - 忙等者每窗口空转约 **6.25 亿次**（直接可见的浪费）。
 - 该比值贴合“单核 + N 个忙等者损失 (N+1)×”的调度理论；属调度行为实验，报告 5 次均值与区间。
 
-> 📊 **图（TODO）**：`docs/img/sem_vs_busy.png`（阻塞 vs 忙等工作进程进度对比，标注 49% CPU 浪费）
-> <!-- ![sem-vs-busy](docs/img/sem_vs_busy.png) -->
+阻塞 vs 忙等工作进程进度对比，49% CPU 浪费
 
-复现：`make CPUS=1 qemu` 后 `$ semvsbusy`
+
+![sem-vs-busy](docs/img/sem_vs_busy.png) -->
+
+复现：`make CPUS=1 qemu` 后 `$ sem_vs_busy`
 
 ---
 
@@ -314,7 +332,11 @@ sem_post(semid);  // V：释放资源并唤醒等待者
 
 > 验证了关键安全不变量：物理页生命周期由引用计数决定，而非由某一次 `munmap`/进程退出立即触发；既不提前释放（避免 use-after-free），也不泄漏。
 
-复现：`$ rmidbench`
+引用计数时间轴：RMID 后页仍存活，最后一个 detach 才回收）
+
+![RMID](docs/img/rmid_timeline.png) 
+
+复现：`$ rmid_bench`
 
 ---
 
